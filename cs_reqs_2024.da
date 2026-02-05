@@ -1,13 +1,10 @@
-# Requirements for the Major in Computer Science (CSE)
-#
-# The major in Computer Science leads to the Bachelor of Science degree.
-
 from typing import NamedTuple, Set  ### todo: perhaps remove
 
 ## from enum import Enum
 ## Grade = Enum('Grade', 'A A- B+ B B- C+ C C- D+ D F I I/F NC NR P Q R S U W')
 
-# https://www.stonybrook.edu/sb/bulletin/current-fall24/policiesandregulations/records_registration/grading_system.php
+## https://www.stonybrook.edu/sb/bulletin/current-fall24/policiesandregulations/records_registration/grading_system.php
+
 # Grading and the Grading System
 
 def C_or_higher(grade): return grade in {'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C'}
@@ -33,7 +30,7 @@ def upper_division(course): return int(course[4:]) >= 300
 # P, NC, NR, R, S, U, W.  ## Also I.
 # For the purpose of determining grade point average, grades are assigned
 # point values as follows:
-grade_to_int = {
+grade_to_points = {
   'A': 4.00, 'A-': 3.67,
   'B+': 3.33, 'B': 3.00, 'B-': 2.67,
   'C+': 2.33, 'C': 2.00, 'C-': 1.67,
@@ -43,12 +40,17 @@ grade_to_int = {
 # Calculate the Quality Points for each course by multiplying the Point value
 # of the grade by the total number of Credits for the course:
 def GPA(taken):
-  weighted_sum = sum(grade_to_int[c.grade] * c.credits 
-                     for c in taken if c.grade in grade_to_int)
-  sum_of_weights = sum(c.credits for c in taken if c.grade in grade_to_int)
+  weighted_sum = sum(grade_to_points[c.grade] * c.credits 
+                     for c in taken if c.grade in grade_to_points)
+  sum_of_weights = sum(c.credits for c in taken if c.grade in grade_to_points)
   return weighted_sum / sum_of_weights
 
-# https://www.stonybrook.edu/sb/bulletin/current-fall24/academicprograms/cse/degreesandrequirements.php
+
+## https://www.stonybrook.edu/sb/bulletin/current-fall24/academicprograms/cse/degreesandrequirements.php
+
+# Requirements for the Major and Minor in Computer Science (CSE)
+#
+# Requirements for the Major
 
 ## Each _req function below returns whether a requirement in 1-10 is satisfied.
 ## taken/taken_ids is the set of courses/ids taken by the student, and
@@ -81,7 +83,7 @@ def adv_req(taken_ids):
           other <= taken_ids)
 
 # 3. Computer Science Electives  ## simpler than 2025
-
+#
 # Four upper-division technical CSE electives, each of which must carry at
 # least three credits. Technical electives do not include teaching practica
 # (CSE 475), the senior honors project (CSE 495, 496), and courses
@@ -92,17 +94,16 @@ def elect_courses(taken):
   return {c for c in taken if c.id[:3] == 'CSE' and upper_division(c.id)
           and c.credits >= 3 and c.id not in adv_courses | elect_exclude}
 
-# check the CS electives requirement
 def elect_req(taken): return len(elect_courses(taken)) >= 4
 
 # 4. AMS 151, AMS 161 Applied Calculus I, II
-calc = {'AMS 151', 'AMS 161'}
-calc2 = {'MAT 125', 'MAT 126', 'MAT 127'}
-calc3 = {'MAT 131', 'MAT 132'}
 ### todo: 
 # Equivalency for MAT courses achieved through the Mathematics
 # Placement Examination is accepted to meet MAT course requirements.
-# calc_courses = calc | calc2 | calc3
+calc = {'AMS 151', 'AMS 161'}
+calc2 = {'MAT 125', 'MAT 126', 'MAT 127'}
+calc3 = {'MAT 131', 'MAT 132'}
+## calc_courses = calc | calc2 | calc3
 
 def calc_req(taken_ids):
   return (calc <= taken_ids or calc2 <= taken_ids or calc3 <= taken_ids)
@@ -132,31 +133,33 @@ che = {'CHE 131', 'CHE 133'}; che2 ={'CHE 152', 'CHE 154'}
 phy = {'PHY 126', 'PHY 133'}
 phy2 = {'PHY 131', 'PHY 133'};
 phy3 = {'PHY 141', 'PHY 133'}
-
 sci_combs = [bio, bio2, bio2, che, che2, phy, phy2, phy3]
 
 def sci_req(taken_ids):  ## some(comb in sci_combs, has= comb <= taken_ids)
   return any(comb <= taken_ids for comb in sci_combs)
 
 # 8. Additional natural science courses selected from above and following list:
+#
+# Note: The courses selected in 7 and 8 must carry at least 9 credits.
 sci_more = {'AST 203', 'AST 205',
             'CHE 132', 'CHE 321', 'CHE 322', 'CHE 331', 'CHE 332',
             'GEO 102', 'GEO 103', 'GEO 112', 'GEO 123', 'GEO 122',
             'PHY 125', 'PHY 127', 'PHY 132', 'PHY 134', 'PHY 142', 
             'PHY 251', 'PHY 252'} 
 
-def science_courses(taken):
+def sci_courses(taken):
   return {c for c in taken if c.id in set().union(*sci_combs) | sci_more}
 
-# Note: The courses selected in 7 and 8 must carry at least 9 credits.
-def sci_req2(taken): return sum(c.credits for c in science_courses(taken)) >= 9
+def sci_cred_req(taken): return sum(c.credits for c in sci_courses(taken)) >= 9
 
 # 9. Professional Ethics
 ethics_courses = {'CSE 312'}
+
 def ethics_req(taken_ids): return ethics_courses <= taken_ids
 
 # 10. Upper-Division Writing Requirement
 writing_courses = {'CSE 300'}
+
 def writing_req(taken_ids): return writing_courses <= taken_ids
 
 ### todo:
@@ -168,9 +171,12 @@ def writing_req(taken_ids): return writing_courses <= taken_ids
 # software component. Approval of the Department of Computer Science is
 # required.
 
+## this is at the top of the section on the webpage:
+# The major in Computer Science leads to the Bachelor of Science degree.
 # Completion of the major requires approximately 80 credits.  ### todo: count
 # At least 24 credits from items 1 to 3 below, and at least 18 credits from
 # items 2 and 3, must be completed at Stony Brook.
+### assume to be not about "The courses taken to satisfy Requirements ..."
 def credits_at_SB(taken):
 ##  item1_credits = ...
   items123_credits = sum(c.credits for c in taken if c.where == 'SB'
@@ -182,15 +188,15 @@ def credits_at_SB(taken):
 # Grading
 #
 # All courses taken to satisfy Requirements 1 through 10 must be taken for
-# a letter grade.  ## always true if the two below are true
+# a letter grade.  ### always true if the two below are true
 # The courses in Requirements 1-6, 9, and 10 must be passed with a letter
-# grade of C or higher.
+# grade of C or higher.  ### assume to be: The courses *taken to satisfy* Req...
 # The grade point average for the courses in Requirements 7 and 8 must be
-# at least 2.00.
-### todo: merge with 7 and 8
-def sci_grade_req(taken): return GPA(science_courses(taken)) >= 2.0
+# at least 2.00.  ### assume to be: The courses *taken to satisfy* Req...
+### todo: merge with 7 and 8, otherwise, not correct if as assumed.
+def sci_grade_req(taken): return GPA(sci_courses(taken)) >= 2.0
 
-## whether the given student satisfies all degree requirements for BS in CSE
+## whether the given student satisfies all requirements for BS major in CSE
 def degree_requirements(student):
   taken = {c for c in student.classesTaken if C_or_higher(c.grade)}
   taken_ids = {c.id for c in taken}
@@ -201,14 +207,14 @@ def degree_requirements(student):
   print("alg:  ", alg_req(taken_ids))
   print("sta:  ", sta_req(taken_ids))
   print("sci:  ", sci_req({c.id for c in student.classesTaken}), 
-        sci_req2(student.classesTaken), sci_grade_req(student.classesTaken))
+        sci_cred_req(student.classesTaken), sci_grade_req(student.classesTaken))
   print("ethics: ", ethics_req(taken_ids))
   print("writing:", writing_req(taken_ids))
   print("credits_at_SB:", credits_at_SB(taken))
   return(intro_req(taken_ids) and adv_req(taken_ids) and elect_req(taken) and
          calc_req(taken_ids) and alg_req(taken_ids) and sta_req(taken_ids) and
          sci_req({c.id for c in student.classesTaken}) and 
-         sci_req2(student.classesTaken) and 
+         sci_cred_req(student.classesTaken) and 
          sci_grade_req(student.classesTaken) and
          ethics_req(taken_ids) and writing_req(taken_ids) and
          credits_at_SB(taken))
