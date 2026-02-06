@@ -39,6 +39,7 @@ grade_to_points = {
 }
 # Calculate the Quality Points for each course by multiplying the Point value
 # of the grade by the total number of Credits for the course:
+### todo: write w/o taken but just points and weights
 def GPA(taken):
   weighted_sum = sum(grade_to_points[c.grade] * c.credits 
                      for c in taken if c.grade in grade_to_points)
@@ -53,8 +54,8 @@ def GPA(taken):
 # Requirements for the Major
 
 ## Each _req function below returns whether a requirement in 1-10 is satisfied.
-## taken/taken_ids is the set of courses/ids taken by the student, and
-## passed with of C or higher for those for requirements 1-6 and 9-10.
+## taken/taken_ids is the set of courses/ids taken by the student (req 7-8);
+## passed/passse_ids is those with of C or higher (requirements 1-6 and 9-10).
 
 # 1. Required Introductory Courses
 prog = {'CSE 114', 'CSE 214', 'CSE 216'}
@@ -64,10 +65,10 @@ dmath2 = {'CSE 150'}  # Honors
 sys = {'CSE 220'}
 intro_courses = prog | prog2 |dmath |dmath2 |sys
 
-def intro_req(taken_ids):
-  return ((prog <= taken_ids or prog2 <= taken_ids) and
-          (dmath <= taken_ids or dmath2 <= taken_ids) and
-          sys <= taken_ids)
+def intro_req(passed_ids):
+  return ((prog <= passed_ids or prog2 <= passed_ids) and
+          (dmath <= passed_ids or dmath2 <= passed_ids) and
+          sys <= passed_ids)
 
 # 2. Required Advanced Courses
 theory = {'CSE 303'}
@@ -77,10 +78,10 @@ algo2 = {'CSE 385'}  # Honors
 other = {'CSE 310', 'CSE 316', 'CSE 320', 'CSE 416'}
 adv_courses = theory | theory2 | algo | algo2 | other
 
-def adv_req(taken_ids):
-  return ((theory <= taken_ids or theory2 <= taken_ids) and
-          (algo <= taken_ids or algo2 <= taken_ids) and
-          other <= taken_ids)
+def adv_req(passed_ids):
+  return ((theory <= passed_ids or theory2 <= passed_ids) and
+          (algo <= passed_ids or algo2 <= passed_ids) and
+          other <= passed_ids)
 
 # 3. Computer Science Electives  ## simpler than 2025
 #
@@ -90,11 +91,11 @@ def adv_req(taken_ids):
 # designated as non-technical in the course description (such as CSE 301).
 elect_exclude = {'CSE 475', 'CSE 495', 'CSE 300', 'CSE 301', 'CSE 312'}
 
-def elect_courses(taken):
-  return {c for c in taken if c.id[:3] == 'CSE' and upper_division(c.id)
+def elect_courses(passed):
+  return {c for c in passed if c.id[:3] == 'CSE' and upper_division(c.id)
           and c.credits >= 3 and c.id not in adv_courses | elect_exclude}
 
-def elect_req(taken): return len(elect_courses(taken)) >= 4
+def elect_req(passed): return len(elect_courses(passed)) >= 4
 
 # 4. AMS 151, AMS 161 Applied Calculus I, II
 ### todo: 
@@ -105,15 +106,15 @@ calc2 = {'MAT 125', 'MAT 126', 'MAT 127'}
 calc3 = {'MAT 131', 'MAT 132'}
 ## calc_courses = calc | calc2 | calc3
 
-def calc_req(taken_ids):
-  return (calc <= taken_ids or calc2 <= taken_ids or calc3 <= taken_ids)
+def calc_req(passed_ids):
+  return (calc <= passed_ids or calc2 <= passed_ids or calc3 <= passed_ids)
 
 # 5. One of the following
 alg = {'MAT 211'}
 alg2 = {'AMS 210'}
 ## alg_courses = alg | alg2
 
-def alg_req(taken_ids): return alg <= taken_ids or alg2 <= taken_ids
+def alg_req(passed_ids): return alg <= passed_ids or alg2 <= passed_ids
 
 # 6. Both of the following
 fmath =  {'AMS 301'}
@@ -121,8 +122,8 @@ sta =  {'AMS 310'}
 sta2 = {'AMS 311'}
 ## sta_courses = fmath | sta | sta2
 
-def sta_req(taken_ids):
-    return fmath <= taken_ids and (sta <= taken_ids or sta2 <= taken_ids)
+def sta_req(passed_ids):
+    return fmath <= passed_ids and (sta <= passed_ids or sta2 <= passed_ids)
 
 # 7. At least one of the following natural science lecture/laboratory
 # combinations:
@@ -155,12 +156,12 @@ def sci_cred_req(taken): return sum(c.credits for c in sci_courses(taken)) >= 9
 # 9. Professional Ethics
 ethics_courses = {'CSE 312'}
 
-def ethics_req(taken_ids): return ethics_courses <= taken_ids
+def ethics_req(passed_ids): return ethics_courses <= passed_ids
 
 # 10. Upper-Division Writing Requirement
 writing_courses = {'CSE 300'}
 
-def writing_req(taken_ids): return writing_courses <= taken_ids
+def writing_req(passed_ids): return writing_courses <= passed_ids
 
 ### todo:
 # Note: All students are encouraged to discuss their program with an
@@ -198,25 +199,25 @@ def sci_grade_req(taken): return GPA(sci_courses(taken)) >= 2.0
 
 ## whether the given student satisfies all requirements for BS major in CSE
 def degree_requirements(student):
-  taken = {c for c in student.classesTaken if C_or_higher(c.grade)}
+  taken = student.classesTaken
   taken_ids = {c.id for c in taken}
-  print("intro:", intro_req(taken_ids))
-  print("adv:  ", adv_req(taken_ids))
-  print("elect:", elect_req(taken))
-  print("calc: ", calc_req(taken_ids))
-  print("alg:  ", alg_req(taken_ids))
-  print("sta:  ", sta_req(taken_ids))
-  print("sci:  ", sci_req({c.id for c in student.classesTaken}), 
-        sci_cred_req(student.classesTaken), sci_grade_req(student.classesTaken))
-  print("ethics: ", ethics_req(taken_ids))
-  print("writing:", writing_req(taken_ids))
+  passed = {c for c in taken if C_or_higher(c.grade)}
+  passed_ids = {c.id for c in passed}
+  print("intro:", intro_req(passed_ids))
+  print("adv:  ", adv_req(passed_ids))
+  print("elect:", elect_req(passed))
+  print("calc: ", calc_req(passed_ids))
+  print("alg:  ", alg_req(passed_ids))
+  print("sta:  ", sta_req(passed_ids))
+  print("sci:  ", sci_req(taken_ids), sci_cred_req(taken), sci_grade_req(taken))
+  print("ethics: ", ethics_req(passed_ids))
+  print("writing:", writing_req(passed_ids))
   print("credits_at_SB:", credits_at_SB(taken))
-  return(intro_req(taken_ids) and adv_req(taken_ids) and elect_req(taken) and
-         calc_req(taken_ids) and alg_req(taken_ids) and sta_req(taken_ids) and
-         sci_req({c.id for c in student.classesTaken}) and 
-         sci_cred_req(student.classesTaken) and 
-         sci_grade_req(student.classesTaken) and
-         ethics_req(taken_ids) and writing_req(taken_ids) and
+  return(intro_req(passed_ids) and adv_req(passed_ids) and elect_req(passed) and
+         calc_req(passed_ids) and alg_req(passed_ids) and sta_req(passed_ids) 
+         and
+         sci_req(taken_ids) and sci_cred_req(taken) and sci_grade_req(taken) and
+         ethics_req(passed_ids) and writing_req(passed_ids) and
          credits_at_SB(taken))
 
 def test():
