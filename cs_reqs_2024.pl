@@ -11,8 +11,10 @@ passed(Id) :- taken(Id, Credits_, Grade, When_, Where_), c_or_higher(Grade).
 
 % c(Id, Subject): course Id in Subject
 
-% met all requirements for subject Subj
-met_all_req(Subj) :- forall(c(Id, Subj), passed(Id)).
+% passed all courses in subject Subj
+passed_all(Subj) :- forall(c(Id, Subj), passed(Id)).
+
+
 
 % 1. Required Introductory Courses
 
@@ -27,9 +29,9 @@ intro_courses(Id) :-
   c(Id, prog); c(Id, prog2); c(Id, dmath); c(Id, dmath2); c(Id, sys).
 
 intro_req :-
-  (met_all_req(prog); met_all_req(prog2)),
-  (met_all_req(dmath); met_all_req(dmath2)),
-  met_all_req(sys).
+  (passed_all(prog); passed_all(prog2)),
+  (passed_all(dmath); passed_all(dmath2)),
+  passed_all(sys).
 
 % 2.
 
