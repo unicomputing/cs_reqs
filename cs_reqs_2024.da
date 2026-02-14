@@ -1,4 +1,4 @@
-from typing import NamedTuple, Set  ### todo: perhaps remove
+from typing import NamedTuple, Tuple, Set  ### todo: perhaps remove
 
 ## from enum import Enum
 ## Grade = Enum('Grade', 'A A- B+ B B- C+ C C- D+ D F I I/F NC NR P Q R S U W')
@@ -13,15 +13,16 @@ def C_or_higher(grade): return grade in {'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C'}
 # circumstances to S grades.  ## what circumstance?
 ## def letter_grade(grade): return 'A' <= grade <= 'F'  ## not need to be used
 
-## a class taken.  ### todo: missing where/semester
-class ClassTaken(NamedTuple):
-  id: str  # Example: 'CSE 114'
+## a course taken
+class CourseTaken(NamedTuple):
+  id: str  ## Example: 'CSE 114'
   credits: int
   grade: str
-  where: str  # 'SB'
+  when: Tuple[int,int]  ## 2024, 2  ## use 1-4 for winter, spring, summer, fall
+  where: str  ## 'SB'
 
 class Student(NamedTuple):
-  classesTaken: Set[ClassTaken]
+  classesTaken: Set[CourseTaken]
 
 ## whether a class is upper-division, i.e., 300-level or above
 def upper_division(course): return int(course[4:]) >= 300
@@ -229,7 +230,7 @@ def test():
                'CSE 360', 'CSE 361', 'CSE 351', 'CSE 352', 'CSE 353', 'CSE 355',
                # science
                'PHY 131', 'PHY 133', 'AST 203'}
-  taken = {ClassTaken(crs, 4, 'A', 'SB') for crs in taken_ids}
+  taken = {CourseTaken(cid, 4, 'A', (2024,2), 'SB') for cid in taken_ids}
   student = Student(taken)
   print('degree_requirements:', degree_requirements(student))
 
