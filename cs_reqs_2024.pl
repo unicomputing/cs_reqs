@@ -11,8 +11,8 @@ passed(Id) :- taken(Id, Credits_, Grade, When_, Where_), c_or_higher(Grade).
 
 % c(Id, Subject): course Id in Subject
 
-% passed all courses in subject Subj
-passed_all(Subj) :- forall(c(Id, Subj), passed(Id)).
+% passed all courses with course Id in Subject
+passed_all(Subject) :- forall(c(Id, Subject), passed(Id)).
 
 
 
@@ -38,20 +38,14 @@ intro_req :-
 
 % test
 
-taken_id('CSE 114'). taken_id('CSE 214'). taken_id('CSE 216').
-taken_id('CSE 215'). taken_id('CSE 220'). 
-taken_id('CSE 303'). taken_id('CSE 310'). taken_id('CSE 316').
-taken_id('CSE 320'). taken_id('CSE 373'). taken_id('CSE 416').
-taken_id('MAT 131'). taken_id('MAT 132'). 
-taken_id('AMS 210'). taken_id('AMS 301'). taken_id('AMS 310'). 
-taken_id('CSE 300'). taken_id('CSE 312').
+taken_ids(['CSE 114', 'CSE 214', 'CSE 216', 'CSE 215', 'CSE 220', 
+           'CSE 303', 'CSE 310', 'CSE 316', 'CSE 320', 'CSE 373', 'CSE 416',
+           'MAT 131', 'MAT 132', 'AMS 210', 'AMS 301', 'AMS 310',
+           'CSE 300', 'CSE 312',
+           'CSE 360', 'CSE 361', 'CSE 351', 'CSE 352', 'CSE 353', 'CSE 355',
+           'PHY 131', 'PHY 133', 'AST 203']).
 
-taken_id('CSE 360'). taken_id('CSE 361'). taken_id('CSE 351').
-taken_id('CSE 352'). taken_id('CSE 353'). taken_id('CSE 355').
-
-taken_id('PHY 131'). taken_id('PHY 133'). taken_id('AST 203').
-
-taken(Id, 4, 'A', (2024,2), 'SB') :- taken_id(Id).
+taken(Id, 4, 'A', (2024,2), 'SB') :- taken_ids(Ids), memberchk(Id,Ids).
 
 test :- intro_req.
 
