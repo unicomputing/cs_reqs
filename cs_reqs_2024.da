@@ -1,4 +1,5 @@
-from typing import NamedTuple, Tuple, Set  ### todo: perhaps remove
+from collections import namedtuple
+## from typing import NamedTuple, Tuple
 
 ## from enum import Enum
 ## Grade = Enum('Grade', 'A A- B+ B B- C+ C C- D+ D F I I/F NC NR P Q R S U W')
@@ -13,25 +14,14 @@ def C_or_higher(grade): return grade in {'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C'}
 # circumstances to S grades.  ## what circumstance?
 ## def letter_grade(grade): return 'A' <= grade <= 'F'  ## not need to be used
 
-## a course taken
-class CourseTaken(NamedTuple):
-  id: str  ## Example: 'CSE 114'
-  credits: int
-  grade: str
-  when: Tuple[int,int]  ## 2024, 2  ## use 1-4 for winter, spring, summer, fall
-  where: str  ## 'SB'
-
-class Student(NamedTuple):
-  classesTaken: Set[CourseTaken]
-
-## whether a class is upper-division, i.e., 300-level or above
-def upper_division(course): return int(course[4:]) >= 300
+## whether a course id is upper-division, i.e., 300-level or above
+def upper_division(course_id): return int(course_id[4:]) >= 300
 
 # The following grades are not calculated into the g.p.a.: 
 # P, NC, NR, R, S, U, W.  ## Also I.
 # For the purpose of determining grade point average, grades are assigned
 # point values as follows:
-grade_to_points = {
+grade_points = {
   'A': 4.00, 'A-': 3.67,
   'B+': 3.33, 'B': 3.00, 'B-': 2.67,
   'C+': 2.33, 'C': 2.00, 'C-': 1.67,
@@ -40,12 +30,21 @@ grade_to_points = {
 }
 # Calculate the Quality Points for each course by multiplying the Point value
 # of the grade by the total number of Credits for the course:
-### todo: write w/o taken but just points and weights
-def GPA(taken):
-  weighted_sum = sum(grade_to_points[c.grade] * c.credits 
-                     for c in taken if c.grade in grade_to_points)
-  sum_of_weights = sum(c.credits for c in taken if c.grade in grade_to_points)
-  return weighted_sum / sum_of_weights
+def GPA(weighted_grades):  ## list of (credits, grade) pairs
+  weighted_sum = sum(grade_points[g] * cr
+                     for (cr,g) in weighted_grades if g in grade_points)
+  sum_of_weights = sum(cr for (cr,g) in weighted_grades if g in grade_points)
+  return weighted_sum / sum_of_weights if sum_of_weights != 0 else 0
+
+
+## a course taken, e.g., Taken('CSE 114', 4, 'A', (2024, 2), 'SB')
+Taken = namedtuple('Taken', ['id', 'credits', 'grade', 'when', 'where'])
+## class CourseTaken(NamedTuple):
+##   id: str  ## e.g., 'CSE 114'
+##   credits: int
+##   grade: str
+##   when: Tuple[int,int]  ## e.g., 2024,2  ## 1-4 for winter,spring,summer,fall
+##   where: str  ## e.g., 'SB'
 
 
 ## https://www.stonybrook.edu/sb/bulletin/current-fall24/academicprograms/cse/degreesandrequirements.php
@@ -55,7 +54,7 @@ def GPA(taken):
 # Requirements for the Major
 
 ## Each _req function below returns whether a requirement in 1-10 is satisfied.
-## taken/taken_ids is the set of courses/ids taken by the student (req 7-8);
+## taken/taken_ids is the set of courses/ids taken (req 7-8);
 ## passed/passse_ids is those with of C or higher (requirements 1-6 and 9-10).
 
 # 1. Required Introductory Courses
@@ -196,11 +195,11 @@ def credits_at_SB(taken):
 # The grade point average for the courses in Requirements 7 and 8 must be
 # at least 2.00.  ### assume to be: The courses *taken to satisfy* Req...
 ### todo: merge with 7 and 8, otherwise, not correct if as assumed.
-def sci_grade_req(taken): return GPA(sci_courses(taken)) >= 2.0
+def sci_grade_req(taken):
+  return GPA([(cr, g) for (_, cr, g, _, _) in sci_courses(taken)]) >= 2.0
 
-## whether the given student satisfies all requirements for BS major in CSE
-def degree_requirements(student):
-  taken = student.classesTaken
+## whether the taken courses satisfy all requirements for BS major in CSE
+def degree_requirements(taken):
   taken_ids = {c.id for c in taken}
   passed = {c for c in taken if C_or_higher(c.grade)}
   passed_ids = {c.id for c in passed}
@@ -230,8 +229,7 @@ def test():
                'CSE 360', 'CSE 361', 'CSE 351', 'CSE 352', 'CSE 353', 'CSE 355',
                # science
                'PHY 131', 'PHY 133', 'AST 203'}
-  taken = {CourseTaken(cid, 4, 'A', (2024,2), 'SB') for cid in taken_ids}
-  student = Student(taken)
-  print('degree_requirements:', degree_requirements(student))
+  taken = {Taken(cid, 4, 'A', (2024,2), 'SB') for cid in taken_ids}
+  print('degree_requirements:', degree_requirements(taken))
 
 test()
