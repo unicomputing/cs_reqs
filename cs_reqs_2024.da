@@ -1,8 +1,17 @@
-from collections import namedtuple
-## from typing import NamedTuple, Tuple
+##_ to leave out
 
-## from enum import Enum
-## Grade = Enum('Grade', 'A A- B+ B B- C+ C C- D+ D F I I/F NC NR P Q R S U W')
+from collections import namedtuple
+#_ from typing import NamedTuple, Tuple
+from itertools import chain, combinations  ## for pow
+
+## power set of set s ## overriding python pow(base, exponents, modulus)
+def pow(s): ## take set s, return set of tuples each for a subset of s
+  t = list(s)
+  return set(chain.from_iterable( 
+    combinations(t, r) for r in range(len(t) + 1) ))
+
+#_ from enum import Enum
+#_ Grade = Enum('Grade', 'A A- B+ B B- C+ C C- D+ D F I I/F NC NR P Q R S U W')
 
 ## https://www.stonybrook.edu/sb/bulletin/current-fall24/policiesandregulations/records_registration/grading_system.php
 
@@ -13,9 +22,6 @@ def C_or_higher(grade): return grade in {'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C'}
 # The term "letter grade" refers to A through F and in certain
 # circumstances to S grades.  ## what circumstance?
 ## def letter_grade(grade): return 'A' <= grade <= 'F'  ## not need to be used
-
-## whether a course id is upper-division, i.e., 300-level or above
-def upper_division(course_id): return int(course_id[4:]) >= 300
 
 # The following grades are not calculated into the g.p.a.: 
 # P, NC, NR, R, S, U, W.  ## Also I.
@@ -36,15 +42,18 @@ def GPA(weighted_grades):  ## list of (credits, grade) pairs
   sum_of_weights = sum(cr for (cr,g) in weighted_grades if g in grade_points)
   return weighted_sum / sum_of_weights if sum_of_weights != 0 else 0
 
+## whether a course id is upper-division, i.e., 300-level or above
+def upper_division(course_id): return int(course_id[4:]) >= 300
+
 
 ## a course taken, e.g., Taken('CSE 114', 4, 'A', (2024, 2), 'SB')
 Taken = namedtuple('Taken', ['id', 'credits', 'grade', 'when', 'where'])
-## class CourseTaken(NamedTuple):
-##   id: str  ## e.g., 'CSE 114'
-##   credits: int
-##   grade: str
-##   when: Tuple[int,int]  ## e.g., 2024,2  ## 1-4 for winter,spring,summer,fall
-##   where: str  ## e.g., 'SB'
+#_ class CourseTaken(NamedTuple):
+#_   id: str  ## e.g., 'CSE 114'
+#_   credits: int
+#_   grade: str
+#_   when: Tuple[int,int]  ## e.g., 2024,2  ## 1-4 for winter,spring,summer,fall
+#_   where: str  ## e.g., 'SB'
 
 
 ## https://www.stonybrook.edu/sb/bulletin/current-fall24/academicprograms/cse/degreesandrequirements.php
@@ -136,8 +145,10 @@ phy2 = {'PHY 131', 'PHY 133'};
 phy3 = {'PHY 141', 'PHY 133'}
 sci_combs = [bio, bio2, bio2, che, che2, phy, phy2, phy3]
 
-def sci_req(taken_ids):  ## some(comb in sci_combs, has= comb <= taken_ids)
-  return any(comb <= taken_ids for comb in sci_combs)
+## subsumed by sci_req(taken) below
+## def sci_comb_req(taken_ids):
+##   ## some(comb in sci_combs, has= comb <= taken_ids)
+##   return any(comb <= taken_ids for comb in sci_combs)
 
 # 8. Additional natural science courses selected from above and following list:
 #
@@ -148,10 +159,23 @@ sci_more = {'AST 203', 'AST 205',
             'PHY 125', 'PHY 127', 'PHY 132', 'PHY 134', 'PHY 142', 
             'PHY 251', 'PHY 252'} 
 
-def sci_courses(taken):
-  return {c for c in taken if c.id in set().union(*sci_combs) | sci_more}
+#_ no longer needed:
+#_ def sci_courses(taken):
+#_  return {c for c in taken if c.id in set().union(*sci_combs) | sci_more}
 
-def sci_cred_req(taken): return sum(c.credits for c in sci_courses(taken)) >= 9
+#_ not sufficient to be correct:
+#_ def sci_cred_req(taken): return sum(c.credits for c in sci_courses(taken))>=9
+
+def sci_req(taken): ### subsumes sci_comb_req
+  taken_combs = [{c for c in taken if c.id in comb} 
+                 for comb in sci_combs if comb <= {c.id for c in taken}]
+  #_ some(t in taken_combs, s in pow({c for c in taken if c.id in sci_more}),
+  #_      has= t|set(s) <= taken and sum(c.credits for c in t|set(s)) >= 9 and 
+  #_      GPA([(cr, g) for (_, cr, g, _, _) in t|set(s)]) >= 2.0)
+  return any(t|set(s) <= taken and sum(c.credits for c in t|set(s)) >= 9 and
+             GPA([(cr, g) for (_, cr, g, _, _) in t|set(s)]) >= 2.0 
+             for t in taken_combs 
+             for s in pow({c for c in taken if c.id in sci_more}))
 
 # 9. Professional Ethics
 ethics_courses = {'CSE 312'}
@@ -179,7 +203,7 @@ def writing_req(passed_ids): return writing_courses <= passed_ids
 # items 2 and 3, must be completed at Stony Brook.
 ### assume to be not about "The courses taken to satisfy Requirements ..."
 def credits_at_SB(taken):
-##  item1_credits = ...
+#_  item1_credits = ...
   items123_credits = sum(c.credits for c in taken if c.where == 'SB'
         if c.id in intro_courses | adv_courses | elect_courses(taken))
   items23_credits = sum(c.credits for c in taken if c.where == 'SB'
@@ -194,9 +218,9 @@ def credits_at_SB(taken):
 # grade of C or higher.  ### assume to be: The courses *taken to satisfy* Req...
 # The grade point average for the courses in Requirements 7 and 8 must be
 # at least 2.00.  ### assume to be: The courses *taken to satisfy* Req...
-### todo: merge with 7 and 8, otherwise, not correct if as assumed.
-def sci_grade_req(taken):
-  return GPA([(cr, g) for (_, cr, g, _, _) in sci_courses(taken)]) >= 2.0
+## merged with 7 and 8; otherwise, not correct if as assumed.
+#_ def sci_grade_req(taken):
+#_   return GPA([(cr, g) for (_, cr, g, _, _) in sci_courses(taken)]) >= 2.0
 
 ## whether the taken courses satisfy all requirements for BS major in CSE
 def degree_requirements(taken):
@@ -209,14 +233,13 @@ def degree_requirements(taken):
   print("calc: ", calc_req(passed_ids))
   print("alg:  ", alg_req(passed_ids))
   print("sta:  ", sta_req(passed_ids))
-  print("sci:  ", sci_req(taken_ids), sci_cred_req(taken), sci_grade_req(taken))
+  print("sci:  ", sci_req(taken))
   print("ethics: ", ethics_req(passed_ids))
   print("writing:", writing_req(passed_ids))
   print("credits_at_SB:", credits_at_SB(taken))
   return(intro_req(passed_ids) and adv_req(passed_ids) and elect_req(passed) and
          calc_req(passed_ids) and alg_req(passed_ids) and sta_req(passed_ids) 
-         and
-         sci_req(taken_ids) and sci_cred_req(taken) and sci_grade_req(taken) and
+         and sci_req(taken) and
          ethics_req(passed_ids) and writing_req(passed_ids) and
          credits_at_SB(taken))
 
