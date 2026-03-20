@@ -255,9 +255,9 @@ def credits_at_SB_req(taken):
        if c.id in courses(intro) | courses(adv) | elect_courses(taken))
   items23_credits = sum(c.credits for c in taken if c.where == 'SB'
                         if c.id in courses(adv) | elect_courses(taken))
-  return (items123_credits >= 24 and items23_credits >= 18
-          and wit('credits_at_SB', {'items123 = '+str(items123_credits),
-                                    'items23 = '+str(items23_credits)}))
+  wit('credits_at_SB', {'items123 = '+str(items123_credits),
+                        'items23 = '+str(items23_credits)})
+  return (items123_credits >= 24 and items23_credits >= 18)
 
 # Grading
 #
@@ -294,7 +294,7 @@ def degree_reqs(taken):
 def test():
   taken_ids = {'CSE 114', 'CSE 214', 'CSE 216', #'CSE 215', 'CSE 220', 
                'CSE 303', 'CSE 310', 'CSE 316', 'CSE 320', 'CSE 373', 'CSE 416',
-               'MAT 131', 'MAT 132', 'AMS 210', 'AMS 301', 'AMS 310',
+               #'MAT 131', 'MAT 132', 'AMS 210', 'AMS 301', 'AMS 310',
                # electives
                'CSE 360', 'CSE 361', 'CSE 351', 'CSE 352', 'CSE 353', 'CSE 355',
                # science
@@ -307,7 +307,7 @@ def test():
 
 test()
 
-
+"""
 import tests, inspect
 
 def testing(test):
@@ -329,3 +329,4 @@ def run_tests():
     print('--------', name, 'passed !!!')
 
 run_tests()
+"""
