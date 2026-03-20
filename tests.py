@@ -97,6 +97,20 @@ def test_05():
   return taken, checked
 
 
+def test_06():
+  taken, checked = test_0()
+    
+  taken -= {c for c in taken if c.id in
+            {'CSE 303', 'CSE 310', 'CSE 316', 'CSE 320', 'CSE 373', 'CSE 416',
+             'CSE 360', 'CSE 361', 'CSE 351', 'CSE 352', 'CSE 353', 'CSE 355'}}
+
+  checked['adv'] = (False, [])
+  checked['elect'] = (False, ['need 4 total'])
+  checked['credits_at_SB'] = (False, ['items123 = 20', 'items23 = 0'])
+  checked['degree'] = (False, [])
+
+  return taken, checked
+
 
 if __name__ == "__main__":
   pprint(test_0())
