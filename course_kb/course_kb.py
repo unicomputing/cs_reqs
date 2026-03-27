@@ -4,7 +4,7 @@ from collections import namedtuple
 ## Each course: id, desc, prereqs, antireqs, coreqs, SBC, credits, ...
 ##   Fields are written in the order they appear in the input. Optional fields are None by default.
 ##   For requisites, we keep the original string as is. All requisites are optional.
-Course = namedtuple('Course', 
+Course = namedtuple('Course',
                     ['id',                  ## string: e.g. 'CSE 101'
                      'title',               ## string: e.g. 'Intro to Computer Science'
                     'desc',                 ## string: course description
@@ -22,64 +22,72 @@ Course = namedtuple('Course',
                     ])
 
 class Expr:
-  def __eq__(self, other):
-    return type(self) == type(other) and self.__dict__ == other.__dict__
+    def __eq__(self, other):    return type(self) is type(other) and self.arguments == other.arguments
+    def __hash__(self):         return hash((type(self), tuple(self.arguments)))
 
 ## Represent each requirement in requisites.
 class Requirement(Expr):
-  name: str = ""     ## "taken", "passed", ...
+    name: str = ""     ## "taken", "passed", ...
 
-  def __init__(self, *arguments):
-    self.arguments = list(arguments)
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls.name = cls.__name__.lower()
 
-  def __repr__(self):
-    arg_str = ",".join(repr(arg) for arg in self.arguments)
-    return f'{self.name}({arg_str})'
+    def __init__(self, *arguments):
+        self.arguments = list(arguments)
 
-class Taken(Requirement):     ## e.g. taken_id("CSE 303"), taken_id("CSE 350")
-                                ###    named taken_id to avoid clash with taken/5 in prolog and clingo.
-  name = "taken"                ###    TODO: better name?
+    def __repr__(self):
+        arg_str = ",".join(repr(arg) for arg in self.arguments)
+        return f'{self.name}({arg_str})'
 
-class Passed(Requirement):    ## e.g. passed("CSE 101"), passed("AMS 210", "B")
-  ## by default, we assume passing means C or higher because that's the only case in cse courses.
-  ## other programs may have 'passed with B or higher'.
-  name = "passed"
+class StudentReq(Requirement): pass   ## Major, Standing — not decided by solver; pinned by planner
+class CourseReq(Requirement):  pass   ## Taken, Passed — free BoolVars decided by solver
 
-class Major(Requirement):     ## e.g. cse_major
-  name = "major"
+class Taken(CourseReq):     ## e.g. taken_id("CSE 303"), taken_id("CSE 350")
+                               ###    named taken_id to avoid clash with taken/5 in prolog and clingo.
+    pass                       ###    TODO: better name?
 
-class Standing(Requirement):   ## e.g. u3_standing
-  name = "standing"
+class Passed(CourseReq):    ## e.g. passed("CSE 101"), passed("AMS 210", "B")
+    ## by default, we assume passing means C or higher because that's the only case in cse courses.
+    ## other programs may have 'passed with B or higher'.
+    pass
 
-class Permission(Requirement):
-  name = "permission"
+class Major(StudentReq):     ## e.g. cse_major
+    pass
 
-class UnsupportedRequirement(Requirement):    ## to wrap all unsupported formats
-  name = "unsupported"
-  
-  def __init__(self, text):
-    super().__init__(text)
-  
-  def __repr__(self):
-    return f'unsupported("{self.arguments[0]}")'
+class Standing(StudentReq):   ## e.g. u3_standing
+    pass
+
+class Permission(StudentReq):
+    pass
+
+class UnsupportedRequirement(StudentReq):    ## to wrap all unsupported formats
+    name = "unsupported"   ## override: "unsupportedrequirement" would be wrong
+
+    def __repr__(self):
+        return f'unsupported("{self.arguments[0]}")'
 
 class LogicalExpr(Expr):
-  def __init__(self, op_str, subexprs: list[Expr]):
-    self.op_str = op_str
-    self.subexprs = subexprs
+    def __init__(self, *subexprs):
+        if len(subexprs) == 1 and isinstance(subexprs[0], list):
+            subexprs = subexprs[0]
+        self.subexprs = list(subexprs)
 
-  def __repr__(self):
-    # return f'{self.op_str}({self.subexprs.__repr__()})'
-    return f'{self.op_str}({", ".join(repr(e) for e in self.subexprs)})'
-  
-  # def __eq__(self, other): pass ### todo: order shouldn't matter in And and Or
+    @property
+    def operands(self): return self.subexprs   ## for solver compatibilty, should we name it operands everywhere?
 
-## Represent a list of conjuncts in requisites.
-class And(LogicalExpr):
-  def __init__(self, subexprs):
-    super().__init__('And', subexprs)
+    def __repr__(self):
+        return f"{type(self).__name__}({', '.join(repr(s) for s in self.subexprs)})"
 
-## Represent a list of disjuncts in requisites.
-class Or(LogicalExpr):  
-  def __init__(self, subexprs):
-    super().__init__('Or', subexprs)
+## Represent a list of conjuncts.
+class And(LogicalExpr): pass
+
+## Represent a list of disjuncts.
+class Or(LogicalExpr):  pass
+
+## retrieve all CourseReq argument values (course IDs) from an And-Or expression
+def get_courses(expr):
+    if isinstance(expr, CourseReq):   return set(expr.arguments)
+    if isinstance(expr, Requirement): return set()
+    if isinstance(expr, LogicalExpr): return set().union(*(get_courses(op) for op in expr.operands))
+    return set()

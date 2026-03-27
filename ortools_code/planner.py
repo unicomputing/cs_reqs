@@ -1,9 +1,9 @@
 from itertools import product
-from .solver import Solver, And, Or, get_leaves
+from .solver import Solver
 from .course_catalog import (
     catalog, upper_division,
-    Passed, Taken, Major, Standing, Unsupported, Permission,
-    CourseAttr,
+    Passed, Taken, Major, Standing, UnsupportedRequirement, Permission,
+    CourseReq, And, Or, get_courses,
 )
 
 def C_or_higher(grade): return grade in {'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C'}
@@ -25,7 +25,7 @@ GRADES = grade_to_points.keys()
 MAX_SEM = 10       # upper bound on future semesters
 CREDIT_LIMIT = 15  # max credits per semester
 
-class UsedInSci(CourseAttr): pass
+class UsedInSci(CourseReq): pass
 
 bio  = {'BIO 201', 'BIO 204'}; bio2 = {'BIO 202', 'BIO 204'}; bio3 = {'BIO 203', 'BIO 204'}
 che  = {'CHE 131', 'CHE 133'}; che2 = {'CHE 152', 'CHE 154'}
@@ -45,13 +45,16 @@ def pred_for(cid):
     return Taken(cid) if cid in sci_ids else Passed(cid)
 
 # history is the taken list of tuples
-# attrs are additional attributes of the student such as major, standing, etc.
+# student_reqs are additional attributes of the student such as major, standing, etc.
 # add a boolean for check, to make it a checker
 # ALDA
 # have_to take course
-def plan(history, *attrs, exclude=set()):
+# pass in course_kb from main by using course_catalog
+def plan(history, *student_reqs, exclude=set()):
     # non-sci courses passed with C or higher at SB
-    solver = Solver(*attrs, ignore=(Unsupported, Permission))
+    solver = Solver(ignore=(UnsupportedRequirement, Permission))
+    for req in student_reqs:
+        solver.pin(req, 1)
     model = solver.model
 
     # helper: create grade-dimension vars for science courses
@@ -65,7 +68,7 @@ def plan(history, *attrs, exclude=set()):
         if grade is not None:   # known grade — pin it
             for g in GRADES:
                 solver.pin(Taken(cid, g), 1 if g == grade else 0)
- 
+
     # record history in the model
     known = set()
     for cid, cr, grade, loc in history:
@@ -74,7 +77,7 @@ def plan(history, *attrs, exclude=set()):
             add_graded(cid, grade=grade)
         elif C_or_higher(grade):
             solver.pin(Passed(cid), 1)
- 
+
     # exclude certain courses based on student preferences - if a required course is excluded the planner won't find a solution
     for cid in exclude:
         known.add(cid)
@@ -106,7 +109,13 @@ def plan(history, *attrs, exclude=set()):
     dmath2 = {'CSE 150'}  # Honors
     sys = {'CSE 220'}
     intro_courses = prog | prog2 | dmath | dmath2 | sys
-    reqs["intro"] = And(Or(And(Passed(*prog)), And(Passed(*prog2))), Or(And(Passed(*dmath)), And(Passed(*dmath2))), And(Passed(*sys)))
+
+    # support both so that clingo and ortools run
+    # Passed(c, g)
+    # Passed((c, g), (c, g), (c, g))
+
+    reqs["intro"] = And(Or(And(*map(Passed, prog)), And(*map(Passed, prog2))), Or(And(*map(Passed, dmath)), And(*map(Passed, dmath2))), And(*map(Passed, sys)))
+
 
     # 2. Required Advanced Courses
     theory = {'CSE 303'}
@@ -115,7 +124,7 @@ def plan(history, *attrs, exclude=set()):
     algo2 = {'CSE 385'}  # Honors
     other = {'CSE 310', 'CSE 316', 'CSE 320', 'CSE 416'}
     adv_courses = theory | theory2 | algo | algo2 | other
-    reqs["adv"] = And(Or(And(Passed(*theory)), And(Passed(*theory2))), Or(And(Passed(*algo)), And(Passed(*algo2))), And(Passed(*other)))
+    reqs["adv"] = And(Or(And(*map(Passed, theory)), And(*map(Passed, theory2))), Or(And(*map(Passed, algo)), And(*map(Passed, algo2))), And(*map(Passed, other)))
 
 
     # 3. Computer Science Electives  ## simpler than 2025
@@ -135,24 +144,28 @@ def plan(history, *attrs, exclude=set()):
         and c not in adv_courses | elect_exclude
     }
 
+    # make constraint return a single bool_var that we store in the reqs dict
+    # somehow call solver.require on these boolvars down in the loop
+    # set up a separate witness registration for each req that just passes a set of courses which can be used for witness later on
+    # how would witness registration work for UsedInSci?
     model.add(sum(solver.constraint(Passed(c)) for c in electives) >= 4)
 
     # 4. AMS 151, AMS 161 Applied Calculus I, II
     calc = {'AMS 151', 'AMS 161'}
     calc2 = {'MAT 125', 'MAT 126', 'MAT 127'}
     calc3 = {'MAT 131', 'MAT 132'}
-    reqs["calc"] = Or(And(Passed(*calc)), And(Passed(*calc2)), And(Passed(*calc3)))
+    reqs["calc"] = Or(And(*map(Passed, calc)), And(*map(Passed, calc2)), And(*map(Passed, calc3)))
 
     # 5. One of the following linear algebra courses
     alg = {'MAT 211'}
     alg2 = {'AMS 210'}
-    reqs["alg"] = Or(And(Passed(*alg)), And(Passed(*alg2))) # wrap in And just in case courses are added to the sets
+    reqs["alg"] = Or(And(*map(Passed, alg)), And(*map(Passed, alg2))) # wrap in And just in case courses are added to the sets
 
     # 6. Both of the following:
     fmath = {'AMS 301'}
     sta =   {'AMS 310'}
     sta2 =  {'AMS 311'}
-    reqs["sta"] = And(And(Passed(*fmath)), Or(And(Passed(*sta)), And(Passed(*sta2))))
+    reqs["sta"] = And(And(*map(Passed, fmath)), Or(And(*map(Passed, sta)), And(*map(Passed, sta2))))
 
     # 7. At least one natural science lecture/laboratory combination
     # each comb is a pair that must both be taken — Or across all valid pairs
@@ -161,16 +174,16 @@ def plan(history, *attrs, exclude=set()):
 
     # 8. Additional natural science courses selected from above and following list
     # The courses selected in 7 and 8 must carry at least 9 credits total
-    
+
     for cid in sci_ids:     # used is a subset of taken
         model.add_implication(solver[UsedInSci(cid)], solver[Taken(cid)])
- 
+
     # at least one complete lecture/lab combo must be in the subset
     solver.require(Or(*[And(*[UsedInSci(cid) for cid in comb]) for comb in sci_combs]))
- 
+
     used_credit_total = sum(solver[UsedInSci(cid)] * credits(cid) for cid in sci_ids)
     model.add(used_credit_total >= 9)
- 
+
     used_grade = {}
     for cid in sci_ids:
         for g in grade_to_points:
@@ -179,9 +192,9 @@ def plan(history, *attrs, exclude=set()):
             model.add_implication(ug, solver[UsedInSci(cid)])
             used_grade[(cid, g)] = ug
         model.add(sum(used_grade[(cid, g)] for g in grade_to_points) == solver[UsedInSci(cid)])
- 
+
     used_weighted_sum = sum(used_grade[(cid, g)] * int(grade_to_points[g] * 100) * credits(cid) for cid in sci_ids for g in grade_to_points)
- 
+
     # The grade point average for the courses in Requirements 7 and 8 must be
     # at least 2.00.
     ## GPA >= 2.0  <=>  weighted_sum >= 200 * total_credits  (scaled by 100)
@@ -189,11 +202,11 @@ def plan(history, *attrs, exclude=set()):
 
     # 9. Professional Ethics
     ethics_courses = {'CSE 312'}
-    reqs["ethics"] = And(Passed(*ethics_courses))
+    reqs["ethics"] = And(*map(Passed, ethics_courses))
 
     # 10. Upper-Division Writing Requirement
     writing_courses = {'CSE 300'}
-    reqs["writing"] = And(Passed(*writing_courses))
+    reqs["writing"] = And(*map(Passed, writing_courses))
 
     for expr in reqs.values():
         solver.require(expr)
@@ -217,7 +230,7 @@ def plan(history, *attrs, exclude=set()):
         if cid in known: continue
         prereq_sat = solver.constraint(expr)
         if prereq_sat is not None: model.add_implication(solver[Passed(cid)], prereq_sat) # boolean: prereqs must hold
-        for p in get_leaves(expr):
+        for p in get_courses(expr):
             if p in sem:
                 model.add(sem[p] < sem[cid]).only_enforce_if(solver[Passed(cid)])
 
@@ -246,21 +259,21 @@ def plan(history, *attrs, exclude=set()):
         solver[Taken(cid, g)] * int(grade_to_points[g] * 100)
         for cid in graded if cid not in grades
         for g in GRADES)
-    
+
     # minimize total grade points and number of semesters
     model.minimize(last_sem * 10_000_000 + new_courses * 10_000 + planned_grade_sum)
 
     # run the solver
     status, obj = solver.solve()
- 
+
     if obj is None:
         print("No solution:", status)
         return {}
     print(f"Status: {status} — {obj // 10_000_000} more semester(s)\n")
- 
+
     schedule = {cid: solver.value(sem[cid])
                 for cid in catalog if solver.value(sem[cid]) > 0}
- 
+
     # retreive grades chosen by the planner for courses
     for cid in graded:
         if cid not in grades:
@@ -272,26 +285,26 @@ def plan(history, *attrs, exclude=set()):
     for cid in schedule:
         if cid not in grades:
             grades[cid] = 'C'
- 
+
     # report which courses satisfy which requirements (witness)
-    reqs["elect"] = Or(Passed(*electives))
+    reqs["elect"] = Or(*map(Passed, electives))
     reqs["sci"] = {cid for cid in sci_ids if solver.value(UsedInSci(cid))}
-    
+
     checked = {}
     for name, expr in sorted(reqs.items()):
         if isinstance(expr, set):
             wit = sorted(expr)
         else:
-            wit = sorted(cid for cid in get_leaves(expr) if solver.value(Passed(cid)))
+            wit = sorted(cid for cid in get_courses(expr) if solver.value(Passed(cid)))
         checked[name] = (True, wit)
         print(f"{name} : {', '.join(fmt(c, grades) for c in wit)}")
- 
+
     items123_cr = sum(credits(c) for c in items123_courses if solver.value(pred_for(c)))
     items23_cr  = sum(credits(c) for c in items23_courses  if solver.value(pred_for(c)))
     checked['credits_at_SB'] = (True, [f'items123 = {items123_cr}', f'items23 = {items23_cr}'])
     checked['degree'] = (True, [])
     print(f"credits_at_sb : items 1-3 = {items123_cr} (≥24), items 2-3 = {items23_cr} (≥18)")
- 
+
     # printing semester-wise schedule of courses
     by_sem = {}
     for cid, s in schedule.items():
@@ -300,7 +313,7 @@ def plan(history, *attrs, exclude=set()):
     for s in sorted(by_sem):
         total = sum(credits(c) for c in by_sem[s])
         print(f"  Semester +{s} ({total} cr): {', '.join(fmt(c, grades) for c in sorted(by_sem[s]))}")
-    
+
     return checked, schedule, grades
 
 def fmt(cid, grades):
