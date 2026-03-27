@@ -66,7 +66,7 @@ EXPECTED = {
 
 def test_check_full():
     """Standard full course set — should plan nothing new."""
-    checked, schedule, _ = plan(history(FULL), *ATTRS)
+    checked, schedule, _ = plan(history(FULL), *ATTRS, check=True)
     assert schedule == {}, f"expected 0 new, got {len(schedule)}"
 
     missing = []

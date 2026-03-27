@@ -50,7 +50,7 @@ def pred_for(cid):
 # ALDA
 # have_to take course
 # pass in course_kb from main by using course_catalog
-def plan(history, *student_reqs, exclude=set()):
+def plan(history, *student_reqs, exclude=set(), check=False):
     # non-sci courses passed with C or higher at SB
     solver = Solver(ignore=(UnsupportedRequirement, Permission))
     for req in student_reqs:
@@ -89,17 +89,22 @@ def plan(history, *student_reqs, exclude=set()):
     # use actual credits earned from history if available, else for future courses get credits from the catalog
     credits = lambda c: hist_credits.get(c, catalog[c].credits)
 
+    # ensure grade vars exist for all sci courses (needed in both modes)
+    for cid in catalog:
+        if cid in sci_ids and cid not in known:
+            add_graded(cid)
+
     # still need to handle OR Tools for integer variables as solver class only handles BoolVars for now
     sem = {}
-    for cid in catalog:
-        sem[cid] = model.new_int_var(0, MAX_SEM, f"sem_{cid}")
-        if cid in known:
-            model.add(sem[cid] == 0)
-        else:
-            if cid in sci_ids: add_graded(cid)
-            v = solver[pred_for(cid)]
-            model.add(sem[cid] >  0).only_enforce_if(v)
-            model.add(sem[cid] == 0).only_enforce_if(v.negated())
+    if not check:
+        for cid in catalog:
+            sem[cid] = model.new_int_var(0, MAX_SEM, f"sem_{cid}")
+            if cid in known:
+                model.add(sem[cid] == 0)
+            else:
+                v = solver[pred_for(cid)]
+                model.add(sem[cid] >  0).only_enforce_if(v)
+                model.add(sem[cid] == 0).only_enforce_if(v.negated())
 
     reqs = {}
     witnesses = {}
@@ -183,7 +188,6 @@ def plan(history, *student_reqs, exclude=set()):
         model.add_implication(solver[UsedInSci(cid)], solver[Taken(cid)])
 
     used_credit_total = sum(solver[UsedInSci(cid)] * credits(cid) for cid in sci_ids)
-    solver.require(solver.at_least(used_credit_total, 9))
 
     used_grade = {}
     for cid in sci_ids:
@@ -199,7 +203,9 @@ def plan(history, *student_reqs, exclude=set()):
     # The grade point average for the courses in Requirements 7 and 8 must be
     # at least 2.00.
     ## GPA >= 2.0  <=>  weighted_sum >= 200 * total_credits  (scaled by 100)
-    solver.require(solver.at_least(used_weighted_sum, 200 * used_credit_total))
+    reqs["sci"] = And(reqs["sci_combo"],
+                      solver.at_least(used_credit_total, 9),
+                      solver.at_least(used_weighted_sum, 200 * used_credit_total))
     witnesses["sci"] = {UsedInSci(cid) for cid in sci_ids}
 
     # 9. Professional Ethics
@@ -212,61 +218,64 @@ def plan(history, *student_reqs, exclude=set()):
     reqs["writing"] = And(*map(Passed, writing_courses))
     witnesses["writing"] = get_reqs(reqs["writing"])
 
-    for expr in reqs.values():
-        solver.require(expr)
-
-    # At least 24 credits from items 1 to 3 below, and at least 18 credits from
-    # items 2 and 3, must be completed at Stony Brook.
+    # At least 24 credits from items 1 to 3, and at least 18 from 2 and 3, at Stony Brook
     ## courses are already filtered for the ones taken at Stony Brook.
     items123_courses = intro_courses | adv_courses | electives
     items23_courses  = adv_courses | electives
+    reqs['credits_at_SB'] = And(
+        solver.at_least(sum(solver[Passed(c)] * credits(c) for c in items123_courses), 24),
+        solver.at_least(sum(solver[Passed(c)] * credits(c) for c in items23_courses), 18))
 
-    reqs123_creds = solver.at_least(sum(solver[Passed(c)] * credits(c) for c in items123_courses), 24)
-    reqs23_creds = solver.at_least(sum(solver[Passed(c)] * credits(c) for c in items23_courses), 18)
-    reqs['credits_at_SB'] = And(reqs123_creds, reqs23_creds)
-
-    # Completion of the major requires approximately 80 credits.
-    # model.add(sum(solver[pred_for(c)] * credits(c) for c in catalog)  >= 80)
-
-    # pre-req course requirement
-    prereqs = {cid: c.prereq for cid, c in catalog.items() if c.prereq}
-
-    for cid, expr in prereqs.items():
-        if cid in known: continue
-        prereq_sat = solver.constraint(expr)
-        if prereq_sat is not None: model.add_implication(solver[Passed(cid)], prereq_sat) # boolean: prereqs must hold
-        for p in get_courses(expr):
-            if p in sem:
-                model.add(sem[p] < sem[cid]).only_enforce_if(solver[Passed(cid)])
-
-    # credit limit per semester to spread courses out
-
-    for s in range(1, MAX_SEM + 1):
-        sem_credits = []
-        for cid in catalog:
-            b = model.new_bool_var(f"{cid}_s{s}")
-            model.add(sem[cid] == s).only_enforce_if(b)
-            model.add(sem[cid] != s).only_enforce_if(b.negated())
-            sem_credits.append(credits(cid) * b)
-        solver.require(solver.at_most(sum(sem_credits), CREDIT_LIMIT))
-
-    # calculate the time (no. of semesters) taken to graduate
-    last_sem = model.new_int_var(0, MAX_SEM, "last_sem")
-    model.add_max_equality(last_sem, [sem[cid] for cid in catalog])
-
-    # calculate total number of new courses taken
-    new_courses = sum(solver[pred_for(cid)] for cid in catalog if cid not in known)
-
-    # retreive grades for courses already taken
     grades = {cid: grade for (cid, cr, grade, loc) in history}
+    req_vars = {name: solver.constraint(expr) for name, expr in reqs.items()}
 
-    planned_grade_sum = sum(
-        solver[Taken(cid, g)] * int(grade_to_points[g] * 100)
-        for cid in graded if cid not in grades
-        for g in GRADES)
+    if check:
+        for cid in catalog:
+            if cid not in known:
+                solver.pin(pred_for(cid), 0)
+        model.maximize(sum(req_vars.values()))
+    else:
+        for v in req_vars.values():
+            model.add(v == 1)
 
-    # minimize total grade points and number of semesters
-    model.minimize(last_sem * 10_000_000 + new_courses * 10_000 + planned_grade_sum)
+        # Completion of the major requires approximately 80 credits.
+        # model.add(sum(solver[pred_for(c)] * credits(c) for c in catalog)  >= 80)
+
+        # pre-req course requirement
+        prereqs = {cid: c.prereq for cid, c in catalog.items() if c.prereq}
+
+        for cid, expr in prereqs.items():
+            if cid in known: continue
+            prereq_sat = solver.constraint(expr)
+            if prereq_sat is not None: model.add_implication(solver[Passed(cid)], prereq_sat) # boolean: prereqs must hold
+            for p in get_courses(expr):
+                if p in sem:
+                    model.add(sem[p] < sem[cid]).only_enforce_if(solver[Passed(cid)])
+
+        # credit limit per semester to spread courses out
+        for s in range(1, MAX_SEM + 1):
+            sem_credits = []
+            for cid in catalog:
+                b = model.new_bool_var(f"{cid}_s{s}")
+                model.add(sem[cid] == s).only_enforce_if(b)
+                model.add(sem[cid] != s).only_enforce_if(b.negated())
+                sem_credits.append(credits(cid) * b)
+            solver.require(solver.at_most(sum(sem_credits), CREDIT_LIMIT))
+
+        # calculate the time (no. of semesters) taken to graduate
+        last_sem = model.new_int_var(0, MAX_SEM, "last_sem")
+        model.add_max_equality(last_sem, [sem[cid] for cid in catalog])
+
+        # calculate total number of new courses taken
+        new_courses = sum(solver[pred_for(cid)] for cid in catalog if cid not in known)
+
+        planned_grade_sum = sum(
+            solver[Taken(cid, g)] * int(grade_to_points[g] * 100)
+            for cid in graded if cid not in grades
+            for g in GRADES)
+
+        # minimize total grade points and number of semesters
+        model.minimize(last_sem * 10_000_000 + new_courses * 10_000 + planned_grade_sum)
 
     # run the solver
     status, obj = solver.solve()
@@ -274,47 +283,55 @@ def plan(history, *student_reqs, exclude=set()):
     if obj is None:
         print("No solution:", status)
         return {}
-    print(f"Status: {status} — {obj // 10_000_000} more semester(s)\n")
 
-    schedule = {cid: solver.value(sem[cid])
-                for cid in catalog if solver.value(sem[cid]) > 0}
+    if check:
+        print(f"Status: {status} — {obj} / {len(req_vars)} requirements met\n")
+    else:
+        print(f"Status: {status} — {obj // 10_000_000} more semester(s)\n")
 
-    # retreive grades chosen by the planner for courses
-    for cid in graded:
-        if cid not in grades:
-            for g in GRADES:
-                if Taken(cid, g) in solver and solver.value(Taken(cid, g)):
-                    grades[cid] = g
-                    break
-    # hardcode remaining (non-sci) courses to have minimum grade of C
-    for cid in schedule:
-        if cid not in grades:
-            grades[cid] = 'C'
+    schedule = {}
+    if not check:
+        schedule = {cid: solver.value(sem[cid])
+                    for cid in catalog if solver.value(sem[cid]) > 0}
+
+        # retreive grades chosen by the planner for courses
+        for cid in graded:
+            if cid not in grades:
+                for g in GRADES:
+                    if Taken(cid, g) in solver and solver.value(Taken(cid, g)):
+                        grades[cid] = g
+                        break
+        # hardcode remaining (non-sci) courses to have minimum grade of C
+        for cid in schedule:
+            if cid not in grades:
+                grades[cid] = 'C'
 
     # report which courses satisfy which requirements (witness)
     items123_cr = sum(credits(c) for c in items123_courses if solver.value(Passed(c)))
     items23_cr  = sum(credits(c) for c in items23_courses  if solver.value(Passed(c)))
     witnesses['credits_at_SB'] = {f"items123 = {items123_cr}", f"items23 = {items23_cr}"}
-    
+
     checked = {}
     for name in sorted(witnesses):
         wit = sorted(req.arguments[0] for req in witnesses[name] if isinstance(req, Requirement) and solver.value(req))
         wit += sorted(req for req in witnesses[name] if isinstance(req, str))
-        checked[name] = (True, wit)
+        satisfied = bool(solver.value(req_vars[name])) if check and name in req_vars else True
+        checked[name] = (satisfied, wit)
         print(f"{name} : {', '.join(fmt(c, grades) for c in wit)}")
 
     # checked['credits_at_SB'] = (True, [f'items123 = {items123_cr}', f'items23 = {items23_cr}'])
-    checked['degree'] = (True, [])
+    checked['degree'] = (all(v for v, _ in checked.values()), [])
     # print(f"credits_at_sb : items 1-3 = {items123_cr} (≥24), items 2-3 = {items23_cr} (≥18)")
 
-    # printing semester-wise schedule of courses
-    by_sem = {}
-    for cid, s in schedule.items():
-        by_sem.setdefault(s, []).append(cid)
-    print(f"New courses to take ({len(schedule)}):")
-    for s in sorted(by_sem):
-        total = sum(credits(c) for c in by_sem[s])
-        print(f"  Semester +{s} ({total} cr): {', '.join(fmt(c, grades) for c in sorted(by_sem[s]))}")
+    if not check:
+        # printing semester-wise schedule of courses
+        by_sem = {}
+        for cid, s in schedule.items():
+            by_sem.setdefault(s, []).append(cid)
+        print(f"New courses to take ({len(schedule)}):")
+        for s in sorted(by_sem):
+            total = sum(credits(c) for c in by_sem[s])
+            print(f"  Semester +{s} ({total} cr): {', '.join(fmt(c, grades) for c in sorted(by_sem[s]))}")
 
     return checked, schedule, grades
 
