@@ -50,7 +50,10 @@ class Taken(CourseReq):     ## e.g. taken_id("CSE 303"), taken_id("CSE 350")
 class Passed(CourseReq):    ## e.g. passed("CSE 101"), passed("AMS 210", "B")
     ## by default, we assume passing means C or higher because that's the only case in cse courses.
     ## other programs may have 'passed with B or higher'.
-    pass
+    def __init__(self, *arguments):
+        if len(arguments) == 1:
+            arguments = (arguments[0], 'C')
+        super().__init__(*arguments)
 
 class Major(StudentReq):     ## e.g. cse_major
     pass

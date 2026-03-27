@@ -6,3 +6,6 @@
 dist/
 build/
 *.lp.bak
+todo.txt
+CLAUDE.md
+catalog_snapshot.json

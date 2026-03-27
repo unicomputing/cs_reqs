@@ -52,7 +52,7 @@ def run_ortools(case):
         checked, schedule, _ = plan(history, Major('CSE'), Standing('U4'))
     checker_result, checker_ok = validate_with_checker(history, schedule)
     failed = [k for k, v in checker_result.items() if not v[0]]
-    return normalize_checked(checked), set(schedule), checker_ok, failed
+    return normalize_checked(checked), set(schedule), schedule, checker_ok, failed
 
 
 def run_clingo_backend(case):
@@ -78,7 +78,7 @@ def run_clingo_backend(case):
     checker_result, checker_ok = validate_with_checker(history, planned_courses)
     failed = [k for k, v in checker_result.items() if not v[0]]
     schedule_courses = {cid for courses in schedule.values() for cid in courses}
-    return normalize_checked(checked), schedule_courses, checker_ok, failed
+    return normalize_checked(checked), schedule_courses, planned_courses, checker_ok, failed
 
 
 def run_one(label, backend):
@@ -94,13 +94,13 @@ def run_one(label, backend):
     for name, func in tests:
         try:
             case = func()
-            checked, schedule_courses, checker_ok, checker_failed = backend(case)
+            checked, schedule_courses, schedule_by_course, checker_ok, checker_failed = backend(case)
             if not checker_ok:
                 failed.append((name, f"python checker rejected combined plan on: {checker_failed}"))
                 continue
 
             _, validate = case
-            validate(checked, schedule_courses)
+            validate(checked, schedule_courses, schedule_by_course)
             passed.append(name)
         except Exception as e:
             failed.append((name, str(e)))

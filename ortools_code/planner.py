@@ -254,10 +254,10 @@ def plan(history, *student_reqs, exclude=set(), check=False, starting_semester=(
         for cid, expr in prereqs.items():
             if cid in known: continue
             prereq_sat = solver.constraint(expr)
-            if prereq_sat is not None: model.add_implication(solver[Passed(cid)], prereq_sat) # boolean: prereqs must hold
+            if prereq_sat is not None: model.add_implication(solver[pred_for(cid)], prereq_sat) # boolean: prereqs must hold
             for p in get_courses(expr):
                 if p in sem:
-                    model.add(sem[p] < sem[cid]).only_enforce_if(solver[Passed(cid)])
+                    model.add(sem[p] < sem[cid]).only_enforce_if(solver[pred_for(cid)])
 
         # credit limit per semester to spread courses out
         for s in range(1, MAX_SEM + 1):

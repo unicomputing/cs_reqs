@@ -32,7 +32,8 @@ for kc in _load_kb(_kb_path):
 # ── Non-CSE courses used in degree requirements ────────────────
 
 def _stub(id, credits):
-    catalog[id] = Course(id, credits)
+    if id not in catalog:
+        catalog[id] = Course(id, credits)
 
 _stub('AMS 151', 3)
 _stub('AMS 161', 3)

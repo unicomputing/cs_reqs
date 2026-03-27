@@ -20,7 +20,7 @@ def test_plan_no_electives():
     elects = {'CSE 360', 'CSE 361', 'CSE 351', 'CSE 352', 'CSE 353', 'CSE 355'}
     taken = history(FULL - elects)
 
-    def validate(checked, schedule_courses):
+    def validate(checked, schedule_courses, schedule_by_course):
         assert len(schedule_courses) >= 1
         assert len(checked['elect'][1]) >= 4
 
@@ -32,7 +32,7 @@ def test_plan_no_calc():
     ids = FULL - {'MAT 131', 'MAT 132'}
     taken = history(ids)
 
-    def validate(checked, schedule_courses):
+    def validate(checked, schedule_courses, schedule_by_course):
         assert len(schedule_courses) >= 1
         assert len(checked['calc'][1]) >= 2
 
@@ -44,7 +44,7 @@ def test_plan_no_sta():
     ids = FULL - {'AMS 301', 'AMS 310'}
     taken = history(ids)
 
-    def validate(checked, schedule_courses):
+    def validate(checked, schedule_courses, schedule_by_course):
         assert len(schedule_courses) >= 1
         sta = set(checked['sta'][1])
         assert 'AMS 301' in sta
@@ -58,10 +58,35 @@ def test_plan_no_alg():
     ids = FULL - {'AMS 210'}
     taken = history(ids)
 
-    def validate(checked, schedule_courses):
+    def validate(checked, schedule_courses, schedule_by_course):
         assert len(schedule_courses) >= 1
         alg = set(checked['alg'][1])
         assert 'AMS 210' in alg or 'MAT 211' in alg
+
+    return taken, validate
+
+
+def test_plan_prereq_order_for_calc_sequence():
+    """Planner should place prereqs before dependent calc courses."""
+    ids = FULL - {'MAT 131', 'MAT 132'}
+    taken = history(ids)
+
+    def validate(checked, schedule_courses, schedule_by_course):
+        assert len(schedule_courses) >= 1
+        possible_pairs = [
+            ('MAT 131', 'MAT 132'),
+            ('AMS 151', 'AMS 161'),
+            ('MAT 125', 'MAT 126'),
+            ('MAT 126', 'MAT 127'),
+        ]
+        planned_pairs = [
+            (pre, req)
+            for pre, req in possible_pairs
+            if pre in schedule_by_course and req in schedule_by_course
+        ]
+        assert planned_pairs, 'no planned prereq/course pair found to validate ordering'
+        for pre, req in planned_pairs:
+            assert schedule_by_course[pre] < schedule_by_course[req], f'{pre} should be before {req} in planned schedule'
 
     return taken, validate
 
