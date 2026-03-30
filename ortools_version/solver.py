@@ -84,7 +84,7 @@ class Solver:
         if isinstance(expr, Requirement):
             cls = type(expr)
             enc = self._encoder(cls)
-            if n and enc: n = enc[n]
+            if enc and n in enc: n = enc[n]
             return self[expr], n
         return expr, n  # already a model variable or linear expression
 

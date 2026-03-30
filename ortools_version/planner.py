@@ -69,16 +69,32 @@ def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(),
     history_ids = {h.id for h in history}
     to_plan_from = catalog.keys() - (history_ids | must_include | must_exclude)
 
-    for h in history: 
-        solver.pin(Grade(h.id), h.grade)
-        solver.pin(Taken(h.id), 1)
-        if schedule: solver.pin(Semester(h.id), h.when)
+    attempts_by_course = {}
+    for h in history:
+        attempts_by_course.setdefault(h.id, []).append(h)
+
+    def best_attempt(attempts):
+        known = [a for a in attempts if a.grade in grade_to_points]
+        if known:
+            # if grade ties, prefer the latest occurrence of that best grade
+            return max(known, key=lambda a: (grade_to_points[a.grade], a.when))
+        # no known grade available: fall back to latest attempt
+        return max(attempts, key=lambda a: a.when)
+
+    for cid, attempts in attempts_by_course.items():
+        attempt = best_attempt(attempts)
+        solver.pin(Grade(cid), attempt.grade)
+        solver.pin(Taken(cid), 1)
+        if schedule:
+            solver.pin(Semester(cid), attempt.when)
+
+    for cid in to_plan_from:
+        # grade is assigned iff course is taken (needed in both check/plan modes)
+        solver.iff(Taken(cid), Grade(cid))
 
     # plan mode
     if not check:
         for cid in to_plan_from:
-            # course has grade assigned if and only if we take the course
-            solver.iff(Taken(cid), Grade(cid))
             if schedule:
                 # course has semester assigned if and only if we take the course
                 solver.iff(Taken(cid), Semester(cid))

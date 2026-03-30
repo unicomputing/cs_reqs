@@ -1,20 +1,32 @@
 import inspect
 import io
+import importlib
 import re
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, redirect_stderr
 from pathlib import Path
 
-import python_version.cs_reqs_2024 as checker
-from clingo_version.run_clingo import run_clingo
-from ortools_version.course_catalog import Major, Standing
-from ortools_version.planner import catalog, plan_courses
-from python_version.cs_reqs_2024 import Taken, degree_reqs
-from course_kb.course_kb import History
 
-import tests.planner_test_cases as test_cases
+ROOT = Path(__file__).resolve().parents[2]
 
 
-ROOT = Path(__file__).resolve().parents[1]
+def collect_tests():
+    modules = []
+    for path in sorted(Path(__file__).parent.glob('planner_test_cases*.py')):
+        module_name = f"tests.planning.{path.stem}"
+        modules.append(importlib.import_module(module_name))
+
+    tests = []
+    for module in modules:
+        module_tests = [
+            (f"{module.__name__.split('.')[-1]}.{name}", func)
+            for name, func in inspect.getmembers(module, inspect.isfunction)
+            if name.startswith('test_plan_')
+        ]
+        tests.extend(sorted(module_tests))
+    return tests
+
+
+ALL_TESTS = collect_tests()
 
 
 def normalize_witness(value):
@@ -28,6 +40,9 @@ def normalize_checked(checked):
     return out
 
 def to_checker_taken(history, planned_courses):
+    from ortools_version.planner import catalog
+    from python_version.cs_reqs_2024 import Taken
+
     taken = set()
     for h in history:
         taken.add(Taken(h.id, h.credits, h.grade, h.when, h.where))
@@ -41,6 +56,9 @@ def clingo_sem_to_when(sem):
 
 
 def validate_with_checker(history, planned_courses):
+    import python_version.cs_reqs_2024 as checker
+    from python_version.cs_reqs_2024 import degree_reqs
+
     checker.w = {}
     with redirect_stdout(io.StringIO()):
         result = degree_reqs(to_checker_taken(history, planned_courses))
@@ -48,6 +66,9 @@ def validate_with_checker(history, planned_courses):
 
 
 def run_ortools(case):
+    from ortools_version.course_catalog import Major, Standing
+    from ortools_version.planner import plan_courses
+
     history, _ = case
     with redirect_stdout(io.StringIO()):
         checked, schedule, _ = plan_courses(history, Major('CSE'), Standing('U4'), schedule=True)
@@ -57,6 +78,9 @@ def run_ortools(case):
 
 
 def run_clingo_backend(case):
+    from clingo_version.run_clingo import run_clingo
+    from python_version.cs_reqs_2024 import Taken
+
     history, _ = case
     taken = {
         Taken(h.id, h.credits, h.grade, h.when, h.where)
@@ -83,30 +107,23 @@ def run_clingo_backend(case):
 
 
 def run_one(label, backend):
-    tests = sorted(
-        (name, func)
-        for name, func in inspect.getmembers(test_cases, inspect.isfunction)
-        if name.startswith('test_plan_')
-    )
-
     passed = []
     failed = []
 
-    for name, func in tests:
-        try:
-            case = func()
-            with redirect_stdout(io.StringIO()):
+    with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+        for name, func in ALL_TESTS:
+            try:
+                case = func()
                 checked, schedule_courses, schedule_by_course, checker_ok, checker_failed = backend(case)
-            if not checker_ok:
-                failed.append((name, f"python checker rejected combined plan on: {checker_failed}"))
-                continue
+                if not checker_ok:
+                    failed.append((name, f"python checker rejected combined plan on: {checker_failed}"))
+                    continue
 
-            _, validate = case
-            with redirect_stdout(io.StringIO()):
+                _, validate = case
                 validate(checked, schedule_courses, schedule_by_course)
-            passed.append(name)
-        except Exception as e:
-            failed.append((name, str(e)))
+                passed.append(name)
+            except Exception as e:
+                failed.append((name, str(e)))
 
     print(f"\n-> {label}: passed {len(passed)} test cases, failed {len(failed)} test cases")
     for name, error in failed:
