@@ -7,36 +7,44 @@ class Solver:
         self.model   = cp_model.CpModel()
         self._solver = None         # created on solve()
         self._vars   = {}           # Requirements converted to BoolVars
-        self._encoders = {}         # pred_class → encode_dict (cached from class domain)
+        self._domains = {}          # var id -> domain size (upper bound; avoids Proto() calls)
+        self._encoders = {}         # pred_class -> encode_dict (cached from class domain)
+        self._queries = {}          # pred_class -> callback that returns a constraint
         self.ignore  = tuple(ignore)
 
     # lazily build and cache the encode dict from a Requirement class's domain
     def _encoder(self, cls):
         if cls not in self._encoders and isinstance(cls.domain, list):
-            self._encoders[cls] = {v: i for i, v in enumerate(cls.domain)}
+            self._encoders[cls] = {v: i + 1 for i, v in enumerate(cls.domain)} | {None: 0}
         return self._encoders.get(cls)
 
     def encode(self, pred_class, value):
         return self._encoder(pred_class)[value]
 
     # allows Python's default indexing -> solver[key]
-    # domain=None → BoolVar; domain=list → categorical (len 1: pin, len 2: BoolVar, len 3+: IntVar)
+    # automatically identifies the type of model variable needed from the domain
     def __getitem__(self, pred):
         if pred not in self._vars:
-            domain = getattr(pred, 'domain', None)
-            if isinstance(domain, list):
-                n = len(domain) - 1   # max index
-                if n <= 1:
-                    self._vars[pred] = self.model.new_bool_var(str(pred))
-                    if n == 0: self.model.add(self._vars[pred] == 0)
-                else:
-                    self._vars[pred] = self.model.new_int_var(0, n, str(pred))
+            if type(pred) in self._queries:
+                self._vars[pred] = self._queries[type(pred)](pred)
             else:
-                lo, hi = domain or (0, 1)
-                if (lo, hi) == (0, 1):
+                domain = getattr(pred, 'domain', None)
+                if isinstance(domain, list):
+                    n = len(domain) - 1   # max index
+                    # if domain has 1 or 2 values we default to boolvar
+                    if n <= 1:
+                        self._vars[pred] = self.model.new_bool_var(str(pred))
+                        if n == 0: self.model.add(self._vars[pred] == 0)
+                        self._domains[id(self._vars[pred])] = 1
+                    else:
+                        # if domain has more than 2 values we create an int var
+                        self._vars[pred] = self.model.new_int_var(0, len(domain), str(pred))
+                        self._domains[id(self._vars[pred])] = len(domain)
+                elif domain is None:
+                    # if domain is None, we default to boolvar
                     self._vars[pred] = self.model.new_bool_var(str(pred))
-                else:
-                    self._vars[pred] = self.model.new_int_var(lo, hi, str(pred))
+                    self._domains[id(self._vars[pred])] = 1
+                else: return
         return self._vars[pred]
 
     # allows the in operator to work naturally
@@ -48,13 +56,10 @@ class Solver:
         iv, value = self._resolve(pred, value)
         self.model.add(iv == value)
 
-    # bidirectional linkage: iv > 0 ↔ bv true, iv == 0 ↔ bv false
-    def link(self, pred, to):
-        iv, bv = self[pred], self[to]
-        self.model.add(iv > 0).only_enforce_if(bv)
-        self.model.add(iv == 0).only_enforce_if(bv.negated())
+    def add_query(self, pred_class, query):
+        self._queries[pred_class] = query
 
-    # return the value of a predicate as a BoolVar
+    # return the BoolVar for a predicate, caching so each predicate maps to exactly one var
     def val(self, pred):
         return self[pred]
 
@@ -62,20 +67,26 @@ class Solver:
     def __setitem__(self, pred, expr):
         self._vars[pred] = self.constraint(expr) if isinstance(expr, (LogicalExpr, Requirement)) else expr
 
+    def _var(self, expr):
+        return self[expr] if isinstance(expr, Requirement) else expr
+
     def implies(self, a, b):
-        a = self[a] if isinstance(a, Requirement) else a
-        b = self[b] if isinstance(b, Requirement) else b
-        self.model.add_implication(a, b)
+        self.model.add_implication(self._var(a), self.constraint(b))
+
+    # bv is true ↔ iv > 0  (used to tie a bool predicate to a categorical one)
+    def iff(self, bv, iv):
+        bv, iv = self._var(bv), self[iv]
+        self.model.add(iv > 0).only_enforce_if(bv)
+        self.model.add(iv == 0).only_enforce_if(bv.negated())
 
     # auto-resolves Requirements and encodes domain values for n
-    # 0 passes through unchanged (reserved as "unassigned" sentinel)
     def _resolve(self, expr, n):
         if isinstance(expr, Requirement):
             cls = type(expr)
-            expr = self[expr]
             enc = self._encoder(cls)
             if n and enc: n = enc[n]
-        return expr, n
+            return self[expr], n
+        return expr, n  # already a model variable or linear expression
 
     def exactly(self, expr, n):
         expr, n = self._resolve(expr, n)
@@ -98,10 +109,11 @@ class Solver:
         self.model.add(expr >  n).only_enforce_if(v.negated())
         return v
 
-    # make a constraint mandatory
+    # make a constraint unconditionally mandatory
     def require(self, expr):
         c = self.constraint(expr)
-        if c is not None: self.model.add(c == 1)
+        if c is not None:
+            self.model.add(c == 1)
 
     # recursively walk an And-Or expression and set up constraints in the model
     def constraint(self, expr):
@@ -127,6 +139,34 @@ class Solver:
         else:                    self.model.add_min_equality(v, ops)
         return v
 
+    # returns an IntVar equal to the max of the given vars
+    def max_of(self, vars):
+        vars = list(vars)
+        if not vars: return 0
+        hi = max(self._domains.get(id(v), 1) for v in vars)  # domain size = upper bound
+        result = self.model.new_int_var(0, hi, "max")
+        self.model.add_max_equality(result, vars)
+        return result
+
+    # minimize objectives in priority order — each level must dominate the sum of all lower levels
+    def minimize(self, objectives):
+        scale, expr = 1, 0
+        for obj in reversed(objectives):
+            expr += obj * scale
+            scale *= 100_000
+        self.model.minimize(expr)
+
+    # map a domain predicate through func via element lookup; iff= holds only when bv is true
+    def apply(self, pred, func, iff=None):
+        values = [0] + [func(v) for v in type(pred).domain]
+        result = self.model.new_int_var(0, max(values), f"apply_{pred}")
+        ct = self.model.add_element(self[pred], values, result)
+        if iff is not None:
+            bv = self._var(iff)
+            ct.only_enforce_if(bv)
+            self.model.add(result == 0).only_enforce_if(bv.negated())
+        return result
+
     # find a solution for given constraints using the CP-SAT solver
     def solve(self):
         self._solver = cp_model.CpSolver()
@@ -142,5 +182,5 @@ class Solver:
         raw = self._solver.value(self[v] if isinstance(v, Requirement) else v)
         domain = getattr(v, 'domain', None)
         if isinstance(domain, list):
-            return domain[raw]
+            return None if raw == 0 else domain[raw - 1]
         return raw

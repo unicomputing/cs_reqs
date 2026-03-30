@@ -3,7 +3,7 @@ from collections import namedtuple
 from course_kb.course_kb import (
     Taken, Passed, Semester, Major, Standing, Permission, UnsupportedRequirement,
     StudentReq, CourseReq, And, Or, get_courses, get_reqs, Requirement,
-    History
+    History, Grade
 )
 from course_kb.build_kb import ASTDecoder
 

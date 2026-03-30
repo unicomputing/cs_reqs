@@ -105,6 +105,7 @@ def test_plan_respects_course_allowed_terms():
                 taken,
                 Major('CSE'),
                 Standing('U4'),
+                schedule=True,
                 course_allowed_terms={'CSE 220': {sem_name}},
             )
             assert 'CSE 220' in direct_schedule

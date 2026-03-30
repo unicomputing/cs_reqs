@@ -31,7 +31,7 @@ class Expr:
 ## Represent each requirement in requisites.
 class Requirement(Expr):
     name: str = ""     ## "taken", "passed", ...
-    domain = None      ## None → BoolVar; list → categorical IntVar (0 = unassigned, 1..N = values)
+    domain = None      ## None for boolean, list of ordered domain
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -47,7 +47,8 @@ class Requirement(Expr):
 class StudentReq(Requirement): pass   ## Major, Standing — not decided by solver; pinned by planner
 class CourseReq(Requirement):  pass   ## Taken, Passed — free BoolVars decided by solver
 
-class Semester(CourseReq): pass   ## domain controlled by solver via set_domain
+class Semester(CourseReq): pass   ## predicate to represent semester in which a course is taken
+class Grade(CourseReq): pass   ## predicate to represent grade that student has achieved in a course
 
 class Taken(CourseReq):     ## e.g. taken_id("CSE 303"), taken_id("CSE 350")
                                ###    named taken_id to avoid clash with taken/5 in prolog and clingo.

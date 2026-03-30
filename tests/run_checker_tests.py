@@ -1,4 +1,6 @@
 import inspect
+import io
+from contextlib import redirect_stdout
 from pprint import pformat
 import python_code.cs_reqs_2024 as checker
 from python_code.cs_reqs_2024 import degree_reqs
@@ -49,7 +51,8 @@ def run_one(label, check_fn):
     for name, test_fn in ALL_TESTS:
         taken, expected = test_fn()
         try:
-            result = check_fn(taken)
+            with redirect_stdout(io.StringIO()):
+                result = check_fn(taken)
         except Exception as e:
             errors.append((name, e))
             failed.append((name, {}))

@@ -50,7 +50,7 @@ def validate_with_checker(history, planned_courses):
 def run_ortools(case):
     history, _ = case
     with redirect_stdout(io.StringIO()):
-        checked, schedule, _ = plan(history, Major('CSE'), Standing('U4'))
+        checked, schedule, _ = plan(history, Major('CSE'), Standing('U4'), schedule=True)
     checker_result, checker_ok = validate_with_checker(history, schedule)
     failed = [k for k, v in checker_result.items() if not v[0]]
     return normalize_checked(checked), set(schedule), schedule, checker_ok, failed
@@ -95,13 +95,15 @@ def run_one(label, backend):
     for name, func in tests:
         try:
             case = func()
-            checked, schedule_courses, schedule_by_course, checker_ok, checker_failed = backend(case)
+            with redirect_stdout(io.StringIO()):
+                checked, schedule_courses, schedule_by_course, checker_ok, checker_failed = backend(case)
             if not checker_ok:
                 failed.append((name, f"python checker rejected combined plan on: {checker_failed}"))
                 continue
 
             _, validate = case
-            validate(checked, schedule_courses, schedule_by_course)
+            with redirect_stdout(io.StringIO()):
+                validate(checked, schedule_courses, schedule_by_course)
             passed.append(name)
         except Exception as e:
             failed.append((name, str(e)))
