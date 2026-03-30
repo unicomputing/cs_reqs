@@ -20,7 +20,7 @@
 
 from collections import namedtuple
 from pprint import pprint
-from ortools_code.course_catalog import catalog
+from ortools_version.course_catalog import catalog
 
 Taken = namedtuple('Taken', ['id', 'credits', 'grade', 'when', 'where'])
 

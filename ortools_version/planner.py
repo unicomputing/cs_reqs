@@ -44,7 +44,7 @@ def semester_range(start, count):
 # ALDA
 # have_to take course
 # pass in course_kb from main by using course_catalog
-def plan(history, *student_reqs, must_exclude=set(), must_include=set(), check=False, schedule=False, starting_semester=(1, 1), course_allowed_terms=None):
+def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(), check=False, schedule=False, starting_semester=(1, 1), course_allowed_terms=None):
 
     if must_include & must_exclude:
         return None # infeasible
@@ -333,6 +333,6 @@ if __name__ == '__main__':
     taken_ids = {'CSE 114', 'CSE 214', 'CSE 216', 'CSE 220'}
     history   = [History(cid, catalog[cid].credits, "A", (1, 1), "SB") for cid in taken_ids]
 
-    plan(history, Major("CSE"), Standing("U4"))
+    plan_courses(history, Major("CSE"), Standing("U4"))
 
     ## abstraction for counting/aggregation?

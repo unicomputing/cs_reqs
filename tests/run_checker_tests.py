@@ -2,12 +2,12 @@ import inspect
 import io
 from contextlib import redirect_stdout
 from pprint import pformat
-import python_code.cs_reqs_2024 as checker
-from python_code.cs_reqs_2024 import degree_reqs
-from ortools_code.planner import plan
-from ortools_code.course_catalog import Major, Standing
+import python_version.cs_reqs_2024 as checker
+from python_version.cs_reqs_2024 import degree_reqs
+from ortools_version.planner import plan_courses
+from ortools_version.course_catalog import Major, Standing
 from course_kb.course_kb import History
-from clingo_code.run_clingo import run_clingo
+from clingo_version.run_clingo import run_clingo
 import tests.checker_test_cases as test_cases
 
 # ── adapters ─────────────────────────────────────────────────────────────────
@@ -18,14 +18,14 @@ def check_python(taken):
 
 def check_ortools(taken):
     history = [History(t.id, t.credits, t.grade, t.when, t.where) for t in taken]
-    checked, _, _ = plan(history, Major("CSE"), Standing("U4"), check=True)
+    checked, _, _ = plan_courses(history, Major("CSE"), Standing("U4"), check=True)
     return checked
 
 def check_clingo(taken):
     checked, _, _ = run_clingo(
         taken_set=taken,
         mode='check',
-        main_lp='clingo_code/cse_req_clingo.lp',
+        main_lp='clingo_version/cse_req_clingo.lp',
         kb_lp='course_kb/kb_complete.lp',
     )
     return checked
@@ -41,7 +41,7 @@ ALL_TESTS = sorted(
 APPROACHES = [
     ('python_code',  check_python),
     ('ortools_code', check_ortools),
-    ('clingo_code',  check_clingo),
+    ('clingo_version',  check_clingo),
 ]
 
 def run_one(label, check_fn):
@@ -83,4 +83,4 @@ def run_all():
 
 if __name__ == '__main__':
     run_all()
-    # run_one('ortools_code', check_ortools)
+    # run_one('ortools_version', check_ortools)

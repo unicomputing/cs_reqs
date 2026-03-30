@@ -1,5 +1,5 @@
-from ortools_code.planner import catalog, plan
-from ortools_code.course_catalog import Major, Standing
+from ortools_version.planner import catalog, plan_courses
+from ortools_version.course_catalog import Major, Standing
 from course_kb.course_kb import History
 
 
@@ -101,7 +101,7 @@ def test_plan_respects_course_allowed_terms():
     def validate(checked, schedule_courses, schedule_by_course):
         expected_sem = {'Fall': 1, 'Spring': 3}
         for sem_name, sem_num in expected_sem.items():
-            _, direct_schedule, _ = plan(
+            _, direct_schedule, _ = plan_courses(
                 taken,
                 Major('CSE'),
                 Standing('U4'),

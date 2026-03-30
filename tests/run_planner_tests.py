@@ -4,11 +4,11 @@ import re
 from contextlib import redirect_stdout
 from pathlib import Path
 
-import python_code.cs_reqs_2024 as checker
-from clingo_code.run_clingo import run_clingo
-from ortools_code.course_catalog import Major, Standing
-from ortools_code.planner import catalog, plan
-from python_code.cs_reqs_2024 import Taken, degree_reqs
+import python_version.cs_reqs_2024 as checker
+from clingo_version.run_clingo import run_clingo
+from ortools_version.course_catalog import Major, Standing
+from ortools_version.planner import catalog, plan_courses
+from python_version.cs_reqs_2024 import Taken, degree_reqs
 from course_kb.course_kb import History
 
 import tests.planner_test_cases as test_cases
@@ -50,7 +50,7 @@ def validate_with_checker(history, planned_courses):
 def run_ortools(case):
     history, _ = case
     with redirect_stdout(io.StringIO()):
-        checked, schedule, _ = plan(history, Major('CSE'), Standing('U4'), schedule=True)
+        checked, schedule, _ = plan_courses(history, Major('CSE'), Standing('U4'), schedule=True)
     checker_result, checker_ok = validate_with_checker(history, schedule)
     failed = [k for k, v in checker_result.items() if not v[0]]
     return normalize_checked(checked), set(schedule), schedule, checker_ok, failed
@@ -66,7 +66,7 @@ def run_clingo_backend(case):
         checked, schedule, _ = run_clingo(
             taken_set=taken,
             mode='plan',
-            main_lp=str(ROOT / 'clingo_code' / 'cse_req_clingo.lp'),
+            main_lp=str(ROOT / 'clingo_version' / 'cse_req_clingo.lp'),
             kb_lp=str(ROOT / 'course_kb' / 'kb_complete.lp'),
         )
 
@@ -115,8 +115,8 @@ def run_one(label, backend):
 
 
 def run_all():
-    run_one('ortools_code', run_ortools)
-    run_one('clingo_code', run_clingo_backend)
+    run_one('ortools_version', run_ortools)
+    run_one('clingo_version', run_clingo_backend)
 
 
 if __name__ == '__main__':
