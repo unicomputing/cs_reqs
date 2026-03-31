@@ -36,6 +36,13 @@ def semester_range(start, count):
 
 class UsedInSci(CourseReq): pass
 
+# history is the list of taken namedtuples
+# student_reqs are additional attributes of the student such as major, standing, etc.
+# must_exclude course are always excluded when planning
+# must_include are always included when planning
+# check flag controls the checker vs planner mode
+# starting semester indicates the starting semester from which to start planning
+# course_offered_terms is a dict of course ID : {sem names}, e.g., 'CSE 114': {'Fall', 'Spring'}
 def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(), check=False, starting_semester=(1, 1), course_offered_terms=None):
 
     if must_include & must_exclude:

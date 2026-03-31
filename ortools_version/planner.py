@@ -41,11 +41,13 @@ def semester_range(start, count):
 
 # history is the list of taken namedtuples
 # student_reqs are additional attributes of the student such as major, standing, etc.
-# add a boolean for check, to make it a checker
-# ALDA
-# have_to take course
-# pass in course_kb from main by using course_catalog
-def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(), check=False, schedule=False, starting_semester=(1, 1), course_allowed_terms=None):
+# must_exclude course are always excluded when planning
+# must_include are always included when planning
+# check flag controls the checker vs planner mode
+# schedule flag controls whether we want to schedule courses when planning
+# starting semester indicates the starting semester from which to start planning
+# course_offered_terms is a dict of course ID : {sem names}, e.g., 'CSE 114': {'Fall', 'Spring'}
+def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(), check=False, schedule=False, starting_semester=(1, 1), course_offered_terms=None):
 
     if must_include & must_exclude:
         return None # infeasible
@@ -57,7 +59,7 @@ def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(),
     for req in student_reqs:
         solver.ensure(req, 1)
 
-    course_allowed_terms = COURSE_OFFERED_TERMS if course_allowed_terms is None else course_allowed_terms
+    course_offered_terms = COURSE_OFFERED_TERMS if course_offered_terms is None else course_offered_terms
 
     # helper: create grade-dimension vars for science courses
     Grade.domain = GRADES
@@ -101,7 +103,7 @@ def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(),
             if schedule:
                 # course has semester assigned if and only if we take the course
                 solver.iff(Taken(cid), Semester(cid))
-                allowed_terms = course_allowed_terms.get(cid)
+                allowed_terms = course_offered_terms.get(cid)
                 if allowed_terms:
                     # term-restricted: must land in one of the valid allowed slots
                     allowed_slots = [sem for sem in Semester.domain[1:] if sem >= starting_semester and SEM_NAMES[sem[1]] in allowed_terms]
