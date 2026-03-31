@@ -108,5 +108,5 @@ _stub('MAT 200', 3)
 _stub('MAT 250', 3)
 
 # hardcoded term offerings by course id; missing courses are treated as unrestricted
-COURSE_ALLOWED_TERMS = {
+COURSE_OFFERED_TERMS = {
 }

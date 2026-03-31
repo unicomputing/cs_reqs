@@ -1,6 +1,6 @@
 from .solver import Solver
 from .course_catalog import (
-    catalog, upper_division, COURSE_ALLOWED_TERMS,
+    catalog, upper_division, COURSE_OFFERED_TERMS,
     Passed, Taken, Major, Standing, UnsupportedRequirement, Permission,
     CourseReq, And, Or, get_courses, get_reqs, Requirement, History
 )
@@ -26,7 +26,7 @@ grade_to_points = {
 }
 GRADES = sorted(grade_to_points.keys(), key=grade_to_points.get)
 
-MAX_SEM = 20       # upper bound on future semesters
+MAX_SEM = 40       # upper bound on future semesters
 CREDIT_LIMIT = 15  # max credits per semester
 
 SEM_NAMES = {1: 'Fall', 2: 'Winter', 3: 'Spring', 4: 'Summer'}
@@ -55,9 +55,9 @@ def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(),
 
     # set up student requirements in the model
     for req in student_reqs:
-        solver.pin(req, 1)
+        solver.ensure(req, 1)
 
-    course_allowed_terms = COURSE_ALLOWED_TERMS if course_allowed_terms is None else course_allowed_terms
+    course_allowed_terms = COURSE_OFFERED_TERMS if course_allowed_terms is None else course_allowed_terms
 
     # helper: create grade-dimension vars for science courses
     Grade.domain = GRADES
@@ -85,10 +85,10 @@ def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(),
     all_attempts = {}  # cid -> [(grade, credits)] for every attempt with a known grade
     for cid, attempts in attempts_by_course.items():
         attempt = best_attempt(attempts)
-        solver.pin(Grade(cid), attempt.grade)
-        solver.pin(Taken(cid), 1)
+        solver.ensure(Grade(cid), attempt.grade)
+        solver.ensure(Taken(cid), 1)
         if schedule:
-            solver.pin(Semester(cid), attempt.when)
+            solver.ensure(Semester(cid), attempt.when)
         all_attempts[cid] = [(a.grade, a.credits) for a in attempts if a.grade in grade_to_points]
 
     for cid in to_plan_from:
@@ -109,26 +109,22 @@ def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(),
                         # if we take the course, it has to be in one of the allowed semesters
                         solver.implies(Taken(cid), Or(*[solver.exactly(Semester(cid), sem) for sem in allowed_slots]))
                     else: # can't take the course if it is not offered in any of the semesters
-                        solver.pin(Taken(cid), 0)
+                        solver.ensure(Taken(cid), 0)
                 else:
                     # unrestricted: any semester from starting_semester onwards
                     solver.implies(Taken(cid), solver.at_least(Semester(cid), starting_semester))
 
         # hardcoded must_exclude courses to zero
         for cid in must_exclude - history_ids:
-            solver.pin(Taken(cid), 0)
+            solver.ensure(Taken(cid), 0)
 
         # hardcoded must_include courses to 1
         for cid in must_include:
-            solver.pin(Taken(cid), 1)
-
-    # define custom logic for a predicate based on its arguments
-    def passed_query(req):
-        cid, grade = req.arguments
-        return solver.at_least(Grade(cid), grade)
+            solver.ensure(Taken(cid), 1)
     
-    # register this custom logic for Passed with the solver
-    solver.add_query(Passed, passed_query)
+    # Passed(c, g) is true if the course was taken with grade >= g
+    # this will be called when we process a Passed(c, g) value
+    solver[Passed] = lambda c, g: solver.at_least(Grade(c), g)
 
     # fetch credits earned for each course
     hist_credits = {h.id: h.credits for h in history}
@@ -273,7 +269,7 @@ def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(),
 
     if check:
         for cid in to_plan_from:
-            solver.pin(Taken(cid), 0)
+            solver.ensure(Taken(cid), 0)
         model.maximize(sum(req_vars.values()))
     else:
         for v in req_vars.values():
@@ -287,7 +283,7 @@ def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(),
             prereqs = {cid: c.prereq for cid, c in catalog.items() if c.prereq}
 
             for cid, expr in prereqs.items():
-                # for now we're not checking pre-reqs in history
+                # not checking pre-reqs in history
                 if cid in history_ids | must_exclude: continue
                 prereq_sat = solver.constraint(expr)
                 if prereq_sat is not None: solver.implies(Taken(cid), prereq_sat)

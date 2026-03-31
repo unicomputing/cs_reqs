@@ -6,10 +6,9 @@ class Solver:
     def __init__(self, ignore=()):
         self.model   = cp_model.CpModel()
         self._solver = None         # created on solve()
-        self._vars   = {}           # Requirements converted to BoolVars
+        self._vars   = {}           # Requirements/classes converted to BoolVars or lambdas
         self._domains = {}          # var id -> domain size (upper bound; avoids Proto() calls)
         self._encoders = {}         # pred_class -> encode_dict (cached from class domain)
-        self._queries = {}          # pred_class -> callback that returns a constraint
         self.ignore  = tuple(ignore)
 
     # lazily build and cache the encode dict from a Requirement class's domain
@@ -25,8 +24,9 @@ class Solver:
     # automatically identifies the type of model variable needed from the domain
     def __getitem__(self, pred):
         if pred not in self._vars:
-            if type(pred) in self._queries:
-                self._vars[pred] = self._queries[type(pred)](pred)
+            cls = type(pred)
+            if cls in self._vars and callable(self._vars[cls]):
+                self._vars[pred] = self._vars[cls](*pred.arguments)
             else:
                 domain = getattr(pred, 'domain', None)
                 if isinstance(domain, list):
@@ -52,20 +52,21 @@ class Solver:
         return pred in self._vars
 
     # hardcode a variable value; auto-encodes if pred's class has a registered domain
-    def pin(self, pred, value):
+    def ensure(self, pred, value):
         iv, value = self._resolve(pred, value)
         self.model.add(iv == value)
-
-    def add_query(self, pred_class, query):
-        self._queries[pred_class] = query
 
     # return the BoolVar for a predicate, caching so each predicate maps to exactly one var
     def val(self, pred):
         return self[pred]
 
     # allows solver[pred] = expr to store a constraint result
+    # also allows solver[PredClass] = lambda *args: ... to register a query
     def __setitem__(self, pred, expr):
-        self._vars[pred] = self.constraint(expr) if isinstance(expr, (LogicalExpr, Requirement)) else expr
+        if isinstance(pred, type) and callable(expr):
+            self._vars[pred] = expr
+        else:
+            self._vars[pred] = self.constraint(expr) if isinstance(expr, (LogicalExpr, Requirement)) else expr
 
     def _var(self, expr):
         return self[expr] if isinstance(expr, Requirement) else expr

@@ -1,6 +1,6 @@
 from .solver import Solver
 from .course_catalog import (
-    catalog, upper_division, COURSE_ALLOWED_TERMS,
+    catalog, upper_division, COURSE_OFFERED_TERMS,
     Passed, Taken, Major, Standing, UnsupportedRequirement, Permission,
     CourseReq, And, Or, get_courses, get_reqs, Requirement, History
 )
@@ -9,8 +9,6 @@ def C_or_higher(grade): return grade in {'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C'}
 
 ## whether a class is upper-division, i.e., 300-level or above
 def upper_division(course): return int(course[4:]) >= 300
-
-class TakenCourse(CourseReq): pass
 
 # For the purpose of determining grade point average, grades are assigned
 # point values as follows:
@@ -23,7 +21,7 @@ grade_to_points = {
 }
 GRADES = sorted(grade_to_points.keys(), key=grade_to_points.get)
 
-MAX_SEM = 20       # upper bound on future semesters
+MAX_SEM = 40       # upper bound on future semesters
 CREDIT_LIMIT = 15  # max credits per semester
 
 SEM_NAMES = {1: 'Fall', 2: 'Winter', 3: 'Spring', 4: 'Summer'}
@@ -38,7 +36,7 @@ def semester_range(start, count):
 
 class UsedInSci(CourseReq): pass
 
-def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(), check=False, starting_semester=(1, 1), course_allowed_terms=None):
+def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(), check=False, starting_semester=(1, 1), course_offered_terms=None):
 
     if must_include & must_exclude:
         return None # infeasible
@@ -46,20 +44,18 @@ def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(),
     solver = Solver(ignore=(UnsupportedRequirement, Permission))
     model = solver.model
 
-    # set up student requirements in the model
+    # set up student requirements (Major, Standing, etc.) in the model
     for req in student_reqs:
-        solver.pin(req, 1)
+        solver.ensure(req, 1)
 
-    course_allowed_terms = COURSE_ALLOWED_TERMS if course_allowed_terms is None else course_allowed_terms
+    course_offered_terms = COURSE_OFFERED_TERMS if course_offered_terms is None else course_offered_terms
 
+    # list of all possible semesters - from history's first semester to MAX_SEM semesters after that
     base = min((h.when for h in history), default=starting_semester)
-    last_hist = max((h.when for h in history), default=base)
-    hist_span = (last_hist[0] - base[0]) * 4 + (last_hist[1] - base[1]) + 1
-    all_sems = list(semester_range(base, hist_span + MAX_SEM))
+    all_sems = list(semester_range(base, MAX_SEM))
 
+    # record history (store multiple attempts as well)
     history_ids = {}
-
-    # record multiple attempts
     for h in history:
         history_ids.setdefault(h.id, []).append({'g': h.grade, 's': h.when})
 
@@ -68,23 +64,22 @@ def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(),
     # use actual credits earned from history if available, else for future courses get credits from the catalog
     credits = lambda c: hist_credits.get(c, catalog[c].credits)
 
-    # constant false for courses that can't be taken
-    _false = model.new_bool_var("_false")
-    model.add(_false == 0)
-
     for c in catalog:
+        offered_terms = course_offered_terms.get(c)
         for g in GRADES:
             for s in all_sems:
-                allowed = course_allowed_terms.get(c)
                 if c in history_ids:
                     # hardcode history grades
-                    solver.pin(Taken(c, g, s), 1 if {'g': g, 's': s} in history_ids[c] else 0)
+                    solver.ensure(Taken(c, g, s), 1 if {'g': g, 's': s} in history_ids[c] else 0)
                 elif c in must_exclude:
-                    solver.pin(Taken(c, g, s), 0)
+                    # ensure these course are not included in plan
+                    solver.ensure(Taken(c, g, s), 0)
                 else:
                     if s < starting_semester: continue
-                    if allowed and SEM_NAMES[s[1]] not in allowed: solver.pin(Taken(c, g, s), 0)
+                    # ensure course can't be taken in semesters it isn't offered in
+                    if offered_terms and SEM_NAMES[s[1]] not in offered_terms: solver.ensure(Taken(c, g, s), 0)
                     solver[Taken(c, g, s)]
+
         if c in must_include - history_ids.keys():
             # these courses must be included
             model.add_exactly_one(solver[Taken(c, g, s)] for g in GRADES for s in all_sems)
@@ -92,17 +87,8 @@ def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(),
             # plan at most one c, g combo for everything else
             model.add_at_most_one(solver[Taken(c, g, s)] for g in GRADES for s in all_sems)
 
-    def taken_query(req):
-        c = req.arguments[0]
-        return solver.constraint(Or(*[Taken(c, g, s) for g in GRADES for s in all_sems]))
-
-    solver.add_query(TakenCourse, taken_query)
-
-    def passed_query(req):
-        c, gr = req.arguments
-        return solver.constraint(Or(*[Taken(c, g, s) for g in GRADES if grade_to_points[g] >= grade_to_points[gr] for s in all_sems]))
-
-    solver.add_query(Passed, passed_query)
+    # Passed(c, gr) is true if the course was taken with grade >= gr
+    solver[Passed] = lambda c, gr: solver.constraint(Or(*[Taken(c, g, s) for g in GRADES if grade_to_points[g] >= grade_to_points[gr] for s in all_sems]))
 
     reqs = {}
     witnesses = {}
@@ -187,8 +173,9 @@ def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(),
 
     sci_ids  = sorted(set().union(*sci_combs) | sci_more)
 
-    for cid in sci_ids:     # used is a subset of taken
+    for cid in sci_ids:
         for g in GRADES:
+            # creating a new predicate to track the sci subset
             solver.implies(UsedInSci(cid, g), Or(*[Taken(cid, g, s) for s in all_sems]))
         solver[UsedInSci(cid)] = Or(*[UsedInSci(cid, g) for g in GRADES])
         # for history courses, all attempt grades must count in GPA when the course is used
@@ -201,10 +188,8 @@ def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(),
     sci_credit_total = 0
     for cid in sci_ids:
         for g in GRADES:
-            cr = credits(cid)
-            gp = int(grade_to_points[g] * 100) * cr
-            sci_weighted += solver[UsedInSci(cid, g)] * gp
-            sci_credit_total += solver[UsedInSci(cid, g)] * cr
+            sci_weighted += solver[UsedInSci(cid, g)] * int(grade_to_points[g] * 100) * credits(cid)
+            sci_credit_total += solver[UsedInSci(cid, g)] * credits(cid)
 
     # unique-course credits for the 9-credit minimum (counts each course once, not each attempt)
     unique_credit_total = sum(solver[UsedInSci(cid)] * credits(cid) for cid in sci_ids)
@@ -244,7 +229,7 @@ def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(),
         for c in to_plan_from:
             for g in GRADES:
                 for s in all_sems:
-                    solver.pin(Taken(c, g, s), 0)
+                    solver.ensure(Taken(c, g, s), 0)
         model.maximize(sum(req_vars.values()))
     else:
         for v in req_vars.values():
@@ -256,18 +241,21 @@ def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(),
                 solver[Taken(c, s)] = Or(*[Taken(c, g, s) for g in GRADES])
 
         # calculate total number of new courses taken
-        new_courses = sum(solver[TakenCourse(cid)] for cid in to_plan_from)
+        for c in to_plan_from:
+            solver[Taken(c)] = Or(*[Taken(c, g, s) for g in GRADES for s in all_sems])
+        
+        new_courses = sum(solver[Taken(cid)] for cid in to_plan_from)
 
         prereqs = {cid: c.prereq for cid, c in catalog.items() if c.prereq}
 
         for cid, expr in prereqs.items():
-            # for now we're not checking pre-reqs in history
+            # we're not checking pre-reqs in history
             if cid in history_ids.keys() | must_exclude: continue
 
             # create constraint out of prereq expression
             prereq_sat = solver.constraint(expr)
             # if we take a course, we must satisfy its prereqs
-            if prereq_sat is not None: solver.implies(TakenCourse(cid), prereq_sat)
+            if prereq_sat is not None: solver.implies(Taken(cid), prereq_sat)
 
             for p in get_courses(expr):
                 for s in all_sems:
@@ -279,7 +267,7 @@ def plan_courses(history, *student_reqs, must_exclude=set(), must_include=set(),
                     elif p not in history_ids:
                         # first possible semester and prereq not in history — can't take cid here
                         for g in GRADES:
-                            solver.pin(Taken(cid, g, s), 0)
+                            solver.ensure(Taken(cid, g, s), 0)
 
         # credit limit per semester to spread courses out (only for new semesters)
         future_sems = list(semester_range(starting_semester, MAX_SEM))
