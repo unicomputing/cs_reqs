@@ -5,8 +5,8 @@ import argparse
 import json
 import os
 from bs4 import BeautifulSoup 
-from course_kb import *
-from parse_course import course_div_cleanup, parse_course_div, parse_req_text
+from .course_kb import *
+from .parse_course import course_div_cleanup, parse_course_div, parse_req_text
 
 ## all the courses in CSE that can't be handled by the current parsing logic.
 ## we add them manually as overrides.

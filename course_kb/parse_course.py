@@ -1,6 +1,6 @@
 import re, json
 from bs4 import BeautifulSoup, NavigableString, Tag
-from course_kb import *
+from .course_kb import *
 from openai import OpenAI
 
 USE_LLM_TO_PARSE = False
