@@ -11,21 +11,21 @@ passed(Id) :- taken(Id, _Credits, Grade, _When, _Where), c_or_higher(Grade).
 
 % c(Id, Subject): course Id in Subject
 
-% passed all courses with course Id in Subject
-passed_all(Subject) :- forall(c(Id, Subject), passed(Id)).
+% passed all courses with course Id in subject Subj
+passed_all(Subj) :- forall(c(Subj, Id), passed(Id)).
 
 % course C is witness for passing all courses in a subject in requirement Item
-wit(Item, C) :- s(Item, Subj), passed_all(Subj), c(C, Subj).
+wit(Item, C) :- s(Item, Subj), passed_all(Subj), c(Subj, C).
 
 
 % 1. Required Introductory Courses
 
-c('CSE 114', prog). c('CSE 214', prog). c('CSE 216', prog). 
-c('CSE 160', prog2). c('CSE 161', prog2). 
-c('CSE 260', prog2). c('CSE 261', prog2).
-c('CSE 215', dmath). 
-c('CSE 150', dmath2).
-c('CSE 220', sys). 
+c(prog, 'CSE 114'). c(prog, 'CSE 214'). c(prog, 'CSE 216'). 
+c(prog2, 'CSE 160'). c(prog2, 'CSE 161'). 
+c(prog2, 'CSE 260'). c(prog2, 'CSE 261').
+c(dmath, 'CSE 215'). 
+c(dmath2, 'CSE 150').
+c(sys, 'CSE 220'). 
 
 s(intro, prog). s(intro, prog2). s(intro, dmath). s(intro, dmath2).
 s(intro, sys).
